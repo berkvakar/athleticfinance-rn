@@ -8,7 +8,7 @@
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/af-logo.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
@@ -25,6 +25,15 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "cognitoUserPoolId": "us-east-2_RUqlpAIj6",
+      "cognitoClientId": "1hscfpc4bpc9t5qicgjei5vutl",
+      "cognitoRegion": "us-east-2",
+      "apiGatewayUrl": "https://tlmoxk2h56.execute-api.us-east-2.amazonaws.com/dev",
+      "eas": {
+        "projectId": "acfca775-b4bd-429d-baa1-0887577382b5"
+      }
     }
   }
 }
