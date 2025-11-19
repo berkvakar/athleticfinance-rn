@@ -43,7 +43,29 @@ export default function VerificationScreen() {
   }, []);
 
   const handleCodeChange = (index: number, value: string) => {
-    // Only allow numbers
+    // Handle paste - if multiple characters are entered
+    if (value.length > 1) {
+      // Extract only digits from pasted content
+      const digits = value.replace(/\D/g, '').slice(0, 6);
+      
+      if (digits.length > 0) {
+        const newCode = [...code];
+        
+        // Fill in the digits starting from current index
+        for (let i = 0; i < digits.length && (index + i) < 6; i++) {
+          newCode[index + i] = digits[i];
+        }
+        
+        setCode(newCode);
+        
+        // Focus on the next empty field or the last field
+        const nextIndex = Math.min(index + digits.length, 5);
+        inputRefs.current[nextIndex]?.focus();
+      }
+      return;
+    }
+
+    // Only allow numbers for single character input
     if (value && !/^\d$/.test(value)) return;
 
     const newCode = [...code];
@@ -130,7 +152,7 @@ export default function VerificationScreen() {
           {code.map((digit, index) => (
             <TextInput
               key={index}
-              ref={(ref) => (inputRefs.current[index] = ref)}
+              ref={(ref) => { inputRefs.current[index] = ref; }}
               style={[styles.codeInput, error && styles.codeInputError]}
               value={digit}
               onChangeText={(value) => {
@@ -140,7 +162,7 @@ export default function VerificationScreen() {
               }}
               onKeyPress={(e) => handleKeyPress(index, e)}
               keyboardType="numeric"
-              maxLength={1}
+              maxLength={6}
               selectTextOnFocus
             />
           ))}

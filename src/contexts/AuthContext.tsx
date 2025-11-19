@@ -1,7 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { signUp, signIn, signOut, getCurrentUser, fetchAuthSession, updateUserAttribute, confirmSignUp } from 'aws-amplify/auth';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { apiClient } from '../lib/api';
+import { logger } from '../lib/logger';
+import { storeSecure, getSecure, deleteSecure, clearSecureUserData } from '../lib/secureStorage';
 
 interface User {
   id: string;
@@ -43,10 +44,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [savedItems, setSavedItems] = useState<SavedItem[]>([]);
   
-  // Store username in AsyncStorage since custom attributes are not available yet
+  // SECURITY: Store username in encrypted SecureStore instead of plain AsyncStorage
   const getStoredUsername = async (email: string): Promise<string> => {
     try {
-      const stored = await AsyncStorage.getItem(`username_${email}`);
+      const stored = await getSecure(`username_${email}`);
       if (stored) return stored;
       // Generate default username without @ symbol
       const defaultUsername = `${email.split('@')[0]}AF`;
@@ -59,16 +60,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   
   const setStoredUsername = async (email: string, username: string) => {
     try {
-      await AsyncStorage.setItem(`username_${email}`, username);
+      await storeSecure(`username_${email}`, username);
     } catch (error) {
-      console.error('[AUTH] Error storing username:', error);
+      logger.error('[AUTH] Error storing username:', error);
     }
   };
 
-  // Store Cognito username mapping for login
+  // SECURITY: Store Cognito username mapping in encrypted SecureStore
   const getCognitoUsername = async (email: string): Promise<string | null> => {
     try {
-      return await AsyncStorage.getItem(`cognito_username_${email}`);
+      return await getSecure(`cognito_username_${email}`);
     } catch (error) {
       return null;
     }
@@ -76,9 +77,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   
   const setCognitoUsername = async (email: string, cognitoUsername: string) => {
     try {
-      await AsyncStorage.setItem(`cognito_username_${email}`, cognitoUsername);
+      await storeSecure(`cognito_username_${email}`, cognitoUsername);
     } catch (error) {
-      console.error('[AUTH] Error storing Cognito username:', error);
+      logger.error('[AUTH] Error storing Cognito username:', error);
     }
   };
 
@@ -88,41 +89,103 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const loadUser = async () => {
-    console.log('[AUTH] loadUser: Starting to load user session...');
+    logger.log('[AUTH] loadUser: Starting to load user session...');
     try {
       // This will throw if user is not authenticated
-      console.log('[AUTH] loadUser: Calling getCurrentUser()...');
+      logger.log('[AUTH] loadUser: Calling getCurrentUser()...');
       const currentUser = await getCurrentUser();
-      console.log('[AUTH] loadUser: getCurrentUser() succeeded, userId:', currentUser.userId);
+      logger.log('[AUTH] loadUser: getCurrentUser() succeeded');
       
       // Fetch fresh session (Amplify handles token refresh automatically)
-      console.log('[AUTH] loadUser: Fetching auth session...');
+      logger.log('[AUTH] loadUser: Fetching auth session...');
       const session = await fetchAuthSession({ forceRefresh: false });
-      console.log('[AUTH] loadUser: Session fetched, has tokens:', !!session.tokens);
+      logger.log('[AUTH] loadUser: Session fetched, has tokens:', !!session.tokens);
       
       if (currentUser && session.tokens?.idToken) {
+        // Extract and log tokens for debugging
+        const idToken = session.tokens.idToken;
+        const accessToken = session.tokens.accessToken;
+        
+        if (idToken) {
+          const idTokenString = idToken.toString();
+          console.log('========================================');
+          console.log('🔐 CURRENT SESSION - ID TOKEN:');
+          console.log(idTokenString);
+          console.log('========================================');
+        }
+        
+        if (accessToken) {
+          const accessTokenString = accessToken.toString();
+          console.log('========================================');
+          console.log('🔑 CURRENT SESSION - ACCESS TOKEN:');
+          console.log(accessTokenString);
+          console.log('========================================');
+          
+          const accessTokenPayload = accessToken.payload as any;
+          console.log('📋 ACCESS TOKEN PAYLOAD (Decoded):');
+          console.log(JSON.stringify(accessTokenPayload, null, 2));
+          console.log('========================================');
+        }
+        
+        // Note: Refresh token is not directly accessible in Amplify v6 AuthTokens
+        // It's managed internally by Amplify
+        console.log('🔄 Token refresh is handled automatically by Amplify');
+        
         // Fetch user attributes from ID token payload
         const attributes = session.tokens.idToken.payload as any;
-        console.log('[AUTH] loadUser: ID token payload:', attributes);
+        // SECURITY: Do not log token payload in production
+        logger.debug('[AUTH] loadUser: ID token payload:', logger.sanitize(attributes));
         
         const email = attributes.email || '';
-        const storedUsername = await getStoredUsername(email);
-        console.log('[AUTH] loadUser: Email:', email, 'Username:', storedUsername);
+        
+        // Get the actual Cognito username from the token (this is the real username in Cognito/DynamoDB)
+        // Try different possible fields where Cognito might store the username
+        const cognitoUsername = 
+          attributes['cognito:username'] || 
+          attributes.username || 
+          currentUser.username ||
+          attributes.sub?.split(':').pop() || // Fallback: extract from sub if needed
+          null;
+        
+        console.log('🔍 [AUTH] loadUser: Cognito username from token:', cognitoUsername);
+        console.log('🔍 [AUTH] loadUser: All token attributes:', JSON.stringify(attributes, null, 2));
+        
+        // Use Cognito username directly, or fallback to stored username
+        let usernameToUse: string;
+        if (cognitoUsername) {
+          // Use the actual Cognito username (add @ for display)
+          usernameToUse = `@${cognitoUsername}`;
+          // Store it for future use
+          await setStoredUsername(email, usernameToUse);
+          await setCognitoUsername(email, cognitoUsername);
+          console.log('✅ [AUTH] loadUser: Using Cognito username:', cognitoUsername);
+        } else {
+          // Fallback to stored username if Cognito username not found
+          const storedUsername = await getStoredUsername(email);
+          usernameToUse = storedUsername;
+          console.log('⚠️ [AUTH] loadUser: Cognito username not found, using stored:', storedUsername);
+        }
+        
+        logger.log('[AUTH] loadUser: User authenticated');
         
         // Base user data from Cognito
         let userData: User = {
           id: currentUser.userId,
           email: email,
           name: attributes.name || '',
-          username: storedUsername,
+          username: usernameToUse,
           isPremium: false, // Will be set later when custom attributes are added
         };
         
         // Try to fetch additional profile data from DynamoDB
+        // Use the actual Cognito username (without @) for the API call
+        const usernameForApi = cognitoUsername || usernameToUse.replace(/^@/, '').replace(/AF$/i, '');
+        console.log('🔍 [AUTH] loadUser: Username for API call:', usernameForApi);
+        
         try {
-          console.log('[AUTH] loadUser: Fetching profile from DynamoDB...');
-          const profile = await apiClient.getUserProfile(storedUsername);
-          console.log('[AUTH] loadUser: Profile fetched from DynamoDB:', profile);
+          logger.log('[AUTH] loadUser: Fetching profile from DynamoDB...');
+          const profile = await apiClient.getUserProfile(usernameToUse);
+          logger.log('[AUTH] loadUser: Profile fetched from DynamoDB');
           
           // Merge DynamoDB data with Cognito data
           userData = {
@@ -132,33 +195,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             // You can add more fields here as needed
           };
           
-          console.log('[AUTH] loadUser: Merged user data with DynamoDB profile');
+          logger.log('[AUTH] loadUser: Merged user data with DynamoDB profile');
         } catch (profileError: any) {
-          console.warn('[AUTH] loadUser:Could not fetch profile from DynamoDB:', profileError.message);
-          console.log('[AUTH] loadUser: Continuing with Cognito data only');
+          logger.warn('[AUTH] loadUser: Could not fetch profile from DynamoDB');
+          logger.log('[AUTH] loadUser: Continuing with Cognito data only');
           // Continue with Cognito data only - don't fail the login
         }
         
-        console.log('[AUTH] loadUser: Setting user data:', userData);
+        logger.log('[AUTH] loadUser: User loaded successfully');
         setUser(userData);
-        console.log('[AUTH] loadUser: User loaded successfully');
       } else {
-        console.log('[AUTH] loadUser: No valid session tokens, setting user to null');
+        logger.log('[AUTH] loadUser: No valid session tokens, setting user to null');
         setUser(null);
       }
     } catch (error: any) {
       // User not authenticated - clear any stale data
-      console.log('[AUTH] loadUser: Error loading user:', error.message);
-      console.log('[AUTH] loadUser: User not authenticated, clearing user state');
+      logger.log('[AUTH] loadUser: User not authenticated, clearing user state');
       setUser(null);
     } finally {
       setLoading(false);
-      console.log('[AUTH] loadUser: Finished loading user, loading state set to false');
+      logger.log('[AUTH] loadUser: Finished loading user');
     }
   };
 
   const login = async (email: string, password: string) => {
-    console.log('[AUTH] login: Starting login for email:', email);
+    logger.log('[AUTH] login: Starting login');
     
     // Validate inputs
     if (!email || !password) {
@@ -172,14 +233,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const cognitoUsername = await getCognitoUsername(email);
         if (cognitoUsername) {
           loginIdentifier = cognitoUsername;
-          console.log('[AUTH] login: Found stored Cognito username');
+          logger.log('[AUTH] login: Found stored Cognito username');
         }
       } catch (e) {
-        console.warn('[AUTH] login: Could not fetch Cognito username, using email instead');
+        logger.warn('[AUTH] login: Could not fetch Cognito username, using email instead');
       }
   
-      console.log('[AUTH] login: Using login identifier:', loginIdentifier);
-      console.log('[AUTH] login: Calling signIn() with Amplify v6 (Expo compatible)...');
+      logger.log('[AUTH] login: Calling signIn() with Amplify v6 (Expo compatible)...');
   
       // Call signIn with proper error handling for Expo/Amplify v6
       let signInResult;
@@ -189,43 +249,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           username: loginIdentifier, 
           password: password 
         });
-        console.log('[AUTH] login: signIn() completed successfully');
-        console.log('[AUTH] login: signIn result:', JSON.stringify(signInResult, null, 2));
+        logger.log('[AUTH] login: signIn() completed successfully');
+        logger.debug('[AUTH] login: signIn result:', logger.sanitize(signInResult));
       } catch (signInError: any) {
         // Log detailed error for debugging Expo/Amplify issues
-        console.error('[AUTH] login: signIn() threw an error');
-        console.error('[AUTH] login: Error type:', typeof signInError);
-        console.error('[AUTH] login: Error name:', signInError?.name);
-        console.error('[AUTH] login: Error message:', signInError?.message);
-        console.error('[AUTH] login: Error code:', signInError?.code);
-        console.error('[AUTH] login: Error toString:', signInError?.toString?.());
+        logger.error('[AUTH] login: signIn() threw an error');
+        logger.error('[AUTH] login: Error:', signInError?.message || signInError);
         
         // Try to extract more error details from Amplify error structure
         let errorDetails = '';
         try {
           // Check for nested error properties (common in Amplify errors)
           if (signInError?.underlyingError) {
-            console.error('[AUTH] login: Underlying error:', signInError.underlyingError);
             errorDetails = signInError.underlyingError?.message || signInError.underlyingError?.toString() || '';
           }
           if (signInError?.cause) {
-            console.error('[AUTH] login: Error cause:', signInError.cause);
             errorDetails = signInError.cause?.message || signInError.cause?.toString() || errorDetails;
           }
           if (signInError?.errors && Array.isArray(signInError.errors)) {
-            console.error('[AUTH] login: Error array:', signInError.errors);
             errorDetails = signInError.errors.map((e: any) => e?.message || e?.toString()).join(', ') || errorDetails;
           }
-          
-          // Try to stringify the entire error object to see its structure
-          try {
-            const errorString = JSON.stringify(signInError, Object.getOwnPropertyNames(signInError), 2);
-            console.error('[AUTH] login: Full error object:', errorString);
-          } catch (stringifyError) {
-            console.error('[AUTH] login: Could not stringify error:', stringifyError);
-          }
         } catch (extractError) {
-          console.error('[AUTH] login: Error extracting error details:', extractError);
+          logger.error('[AUTH] login: Error extracting error details');
         }
         
         // Build comprehensive error message
@@ -237,7 +282,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           signInError?.toString?.() || 
           'Unknown error';
         
-        console.error('[AUTH] login: Extracted error message:', errorMsg);
+        logger.error('[AUTH] login: Error message:', errorMsg);
         
         // Check for network/permission errors (common with Expo)
         if (
@@ -278,17 +323,82 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const isSignedIn = signInResult?.isSignedIn ?? false;
       const nextStep = signInResult?.nextStep;
   
-      console.log('[AUTH] login: isSignedIn:', isSignedIn, 'nextStep:', nextStep);
+      logger.log('[AUTH] login: isSignedIn:', isSignedIn);
   
       // ✅ Handle sign-in success
       if (isSignedIn) {
-        console.log('[AUTH] login: User is signed in, loading user data...');
+        logger.log('[AUTH] login: User is signed in, fetching Cognito tokens...');
+        
         try {
+          // Fetch auth session to get Cognito tokens
+          const session = await fetchAuthSession({ forceRefresh: true });
+          
+          // Extract ID Token and Access Token
+          const idToken = session.tokens?.idToken;
+          const accessToken = session.tokens?.accessToken;
+          
+          // Log token strings (actual JWT tokens)
+          if (idToken) {
+            const idTokenString = idToken.toString();
+            console.log('========================================');
+            console.log('🔐 COGNITO ID TOKEN (JWT String):');
+            console.log(idTokenString);
+            console.log('========================================');
+            
+            // Log decoded ID token payload
+            const idTokenPayload = idToken.payload as any;
+            console.log('📋 ID TOKEN PAYLOAD (Decoded):');
+            console.log(JSON.stringify(idTokenPayload, null, 2));
+            console.log('========================================');
+          } else {
+            console.warn('⚠️ ID Token not available');
+          }
+          
+          if (accessToken) {
+            const accessTokenString = accessToken.toString();
+            console.log('========================================');
+            console.log('🔑 COGNITO ACCESS TOKEN (JWT String):');
+            console.log(accessTokenString);
+            console.log('========================================');
+            
+            // Log decoded access token payload
+            const accessTokenPayload = accessToken.payload as any;
+            console.log('📋 ACCESS TOKEN PAYLOAD (Decoded):');
+            console.log(JSON.stringify(accessTokenPayload, null, 2));
+            console.log('========================================');
+          } else {
+            console.warn('⚠️ Access Token not available');
+          }
+          
+          // Log token expiration info
+          if (idToken) {
+            const expirationDate = new Date((idToken.payload as any).exp * 1000);
+            const now = new Date();
+            const timeUntilExpiry = expirationDate.getTime() - now.getTime();
+            const minutesUntilExpiry = Math.floor(timeUntilExpiry / 60000);
+            console.log('⏰ ID Token expires at:', expirationDate.toISOString());
+            console.log('⏰ ID Token expires in:', minutesUntilExpiry, 'minutes');
+          }
+          if (accessToken) {
+            const expirationDate = new Date((accessToken.payload as any).exp * 1000);
+            const now = new Date();
+            const timeUntilExpiry = expirationDate.getTime() - now.getTime();
+            const minutesUntilExpiry = Math.floor(timeUntilExpiry / 60000);
+            console.log('⏰ Access Token expires at:', expirationDate.toISOString());
+            console.log('⏰ Access Token expires in:', minutesUntilExpiry, 'minutes');
+          }
+          
+          // Note: Refresh token is not directly accessible in Amplify v6 AuthTokens
+          // It's managed internally by Amplify
+          console.log('🔄 Token refresh is handled automatically by Amplify');
+          console.log('========================================');
+          
+          logger.log('[AUTH] login: Cognito tokens logged, loading user data...');
           await loadUser();
-          console.log('[AUTH] login: ✅ Login successful - user session loaded');
+          logger.log('[AUTH] login: Login successful');
           return;
         } catch (loadError: any) {
-          console.error('[AUTH] login: Error loading user after sign-in:', loadError?.message);
+          logger.error('[AUTH] login: Error loading user after sign-in');
           // Even if loadUser fails, sign-in was successful, so try to continue
           // The user state will be updated on next app load
           throw new Error('Sign in successful, but could not load user data. Please try again.');
@@ -297,7 +407,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   
       // ⚙️ Handle additional required steps (like verification or new password)
       if (nextStep?.signInStep) {
-        console.log('[AUTH] login: Additional step required:', nextStep.signInStep);
+        logger.log('[AUTH] login: Additional step required:', nextStep.signInStep);
         
         if (nextStep.signInStep === 'CONFIRM_SIGN_IN_WITH_NEW_PASSWORD_REQUIRED') {
           throw new Error('New password required. Please reset your password.');
@@ -309,12 +419,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
   
       // ❌ If not signed in and no next step, fail explicitly
-      console.error('[AUTH] login: Sign-in result indicates failure without next step.');
+      logger.error('[AUTH] login: Sign-in result indicates failure without next step.');
       throw new Error('Sign in failed. Please check your email and password.');
   
     } catch (error: any) {
-      console.error('[AUTH] login: Error during login process');
-      console.error('[AUTH] login: Error object:', error);
+      logger.error('[AUTH] login: Error during login process:', error?.message || error);
       
       // Extract error message safely
       let errorMsg = '';
@@ -327,8 +436,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } catch {
         errorMsg = 'Unknown error occurred';
       }
-  
-      console.log('[AUTH] login: Extracted error message:', errorMsg);
   
       // 💬 Map to user-friendly message based on Cognito/Amplify error codes
       let errorMessage = 'Failed to sign in. Please check your email and password.';
@@ -385,17 +492,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         errorMessage = errorMsg;
       }
   
-      console.log('[AUTH] login: Final error message to show:', errorMessage);
       throw new Error(errorMessage);
     }
   };
   
   const signup = async (email: string, password: string, name: string, username: string) => {
-    console.log('[AUTH] signup: Starting signup process');
-    console.log('[AUTH] signup: Email:', email);
-    console.log('[AUTH] signup: Name:', name);
-    console.log('[AUTH] signup: Username:', username);
-    console.log('[AUTH] signup: NOTE - Email and username are already validated in handleSubmit before this function is called');
+    logger.log('[AUTH] signup: Starting signup process');
+    logger.log('[AUTH] signup: Email and username validated');
     
     try {
       // Remove @ symbol if present
@@ -407,23 +510,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Use lowercase and trim
       cleanedUsername = cleanedUsername.toLowerCase().trim();
       
-      console.log('[AUTH] signup: Cleaned username (no @, no AF):', cleanedUsername);
+      logger.log('[AUTH] signup: Username cleaned and validated');
 
       // Use the cleaned username as Cognito username (no @, no AF suffix)
       const cognitoUsername = cleanedUsername;
-      console.log('[AUTH] signup: Cognito username:', cognitoUsername);
 
       // Store username (with @ for display) and Cognito username mapping in AsyncStorage
-      console.log('[AUTH] signup: Storing username in AsyncStorage...');
+      logger.log('[AUTH] signup: Storing username in AsyncStorage...');
       await setStoredUsername(email, `@${cleanedUsername}`);
       await setCognitoUsername(email, cognitoUsername);
-      console.log('[AUTH] signup: Username and Cognito username stored in AsyncStorage');
+      logger.log('[AUTH] signup: Username stored in AsyncStorage');
 
       // IMPORTANT: Email is validated in Auth.tsx handleSubmit before this function is called
       // Username uniqueness will be checked by Cognito during signup
       // The flow is: handleSubmit checks email (Lambda) → then calls this signup function → Cognito checks username
 
-      console.log('[AUTH] signup: Proceeding to Cognito signUp() (email validated, Cognito will check username uniqueness)...');
+      logger.log('[AUTH] signup: Proceeding to Cognito signUp()');
       const { userId, nextStep } = await signUp({
         username: cognitoUsername, // Use actual username (without @) as Cognito username
         password,
@@ -435,26 +537,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           },
         },
       });
-      console.log('[AUTH] signup: signUp() completed, userId:', userId, 'nextStep:', nextStep);
+      logger.log('[AUTH] signup: signUp() completed');
 
       // If email verification is required, return verification info
       if (nextStep.signUpStep === 'CONFIRM_SIGN_UP') {
-        console.log('[AUTH] signup: Email verification required');
+        logger.log('[AUTH] signup: Email verification required');
         return { requiresVerification: true, username: cognitoUsername, email };
       }
 
       // If auto-confirmed, sign in the user
       if (nextStep.signUpStep === 'DONE') {
-        console.log('[AUTH] signup: Account auto-confirmed, signing in user...');
+        logger.log('[AUTH] signup: Account auto-confirmed, signing in user...');
         // Sign in with the Cognito username, not email
         await signIn({ username: cognitoUsername, password });
-        console.log('[AUTH] signup: User signed in, loading user data...');
+        logger.log('[AUTH] signup: User signed in, loading user data...');
         await loadUser();
-        console.log('[AUTH] signup: Signup and login completed successfully');
+        logger.log('[AUTH] signup: Signup and login completed successfully');
       }
     } catch (error: any) {
-      console.error('[AUTH] signup: Error during signup:', error.message);
-      console.error('[AUTH] signup: Error details:', error);
+      logger.error('[AUTH] signup: Error during signup:', error?.message || error);
       
       // Check if it's a username conflict error from Cognito
       const errorMessage = error.message || '';
@@ -469,56 +570,48 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const confirmSignUpVerification = async (username: string, confirmationCode: string, password: string, email?: string) => {
-    console.log('[AUTH] confirmSignUp: Starting verification');
-    console.log('[AUTH] confirmSignUp: Username:', username);
-    console.log('[AUTH] confirmSignUp: Confirmation code length:', confirmationCode.length);
+    logger.log('[AUTH] confirmSignUp: Starting verification');
     
     let verificationSucceeded = false;
     
     try {
-      console.log('[AUTH] confirmSignUp: Calling Cognito confirmSignUp()...');
+      logger.log('[AUTH] confirmSignUp: Calling Cognito confirmSignUp()...');
       const { isSignUpComplete, nextStep } = await confirmSignUp({
         username,
         confirmationCode,
       });
-      console.log('[AUTH] confirmSignUp: confirmSignUp() completed, isSignUpComplete:', isSignUpComplete, 'nextStep:', nextStep);
+      logger.log('[AUTH] confirmSignUp: confirmSignUp() completed');
 
       if (isSignUpComplete) {
         verificationSucceeded = true;
-        console.log('[AUTH] confirmSignUp: ✅ VERIFICATION SUCCEEDED - Account is now verified');
-        console.log('[AUTH] confirmSignUp: Verification successful, signing in user...');
+        logger.log('[AUTH] confirmSignUp: Verification succeeded, signing in user...');
         
         // Store the Cognito username mapping for future logins
         if (email) {
           await setCognitoUsername(email, username);
-          console.log('[AUTH] confirmSignUp: Stored Cognito username mapping');
+          logger.log('[AUTH] confirmSignUp: Stored Cognito username mapping');
         }
         
         // Sign in the user after successful verification - simple approach like Vite version
-        console.log('[AUTH] confirmSignUp: Calling signIn with username:', username);
         await signIn({ username, password });
-        console.log('[AUTH] confirmSignUp: User signed in, loading user data...');
+        logger.log('[AUTH] confirmSignUp: User signed in, loading user data...');
         await loadUser();
-        console.log('[AUTH] confirmSignUp: ✅ Verification and login completed successfully');
+        logger.log('[AUTH] confirmSignUp: Verification and login completed successfully');
       } else {
-        console.warn('[AUTH] confirmSignUp: Sign up not complete, nextStep:', nextStep);
+        logger.warn('[AUTH] confirmSignUp: Sign up not complete');
         throw new Error('Verification completed but sign up is not complete');
       }
     } catch (error: any) {
       // If verification succeeded, don't throw an error - just log it
       if (verificationSucceeded) {
-        console.log('[AUTH] confirmSignUp: ⚠️ Verification succeeded, but encountered error during sign-in process');
-        console.log('[AUTH] confirmSignUp: Error details:', error?.message || error);
-        console.log('[AUTH] confirmSignUp: Account is verified - user can sign in manually');
+        logger.log('[AUTH] confirmSignUp: Verification succeeded, but encountered error during sign-in process');
+        logger.log('[AUTH] confirmSignUp: Account is verified - user can sign in manually');
         // Don't throw - verification was successful
         return;
       }
       
       // Only throw errors if verification itself failed
-      console.error('[AUTH] confirmSignUp: ❌ Error during verification:', error);
-      console.error('[AUTH] confirmSignUp: Error message:', error?.message);
-      console.error('[AUTH] confirmSignUp: Error name:', error?.name);
-      console.error('[AUTH] confirmSignUp: Error stack:', error?.stack);
+      logger.error('[AUTH] confirmSignUp: Error during verification:', error?.message || error);
       
       // Provide better error messages
       let errorMessage = 'Failed to verify account';
@@ -545,44 +638,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = async () => {
-    console.log('[AUTH] logout: Starting logout process...');
+    logger.log('[AUTH] logout: Starting logout process...');
     
     // Capture user email before clearing state
     const userEmail = user?.email;
     
     try {
-      console.log('[AUTH] logout: Calling signOut()...');
+      logger.log('[AUTH] logout: Calling signOut()...');
       await signOut();
-      console.log('[AUTH] logout: signOut() completed');
+      logger.log('[AUTH] logout: signOut() completed');
       
       // Clear user state immediately
       setUser(null);
       setSavedItems([]);
       
-      // Clear AsyncStorage data for the current user if email exists
+      // SECURITY: Clear SecureStore data for the current user if email exists
       if (userEmail) {
         try {
-          await AsyncStorage.removeItem(`username_${userEmail}`);
-          await AsyncStorage.removeItem(`cognito_username_${userEmail}`);
-          console.log('[AUTH] logout: Cleared AsyncStorage data for:', userEmail);
+          await clearSecureUserData(userEmail);
+          logger.log('[AUTH] logout: Cleared secure storage data');
         } catch (storageError) {
-          console.warn('[AUTH] logout: Error clearing AsyncStorage:', storageError);
+          logger.warn('[AUTH] logout: Error clearing secure storage');
           // Don't throw - logout should still succeed even if storage clear fails
         }
       }
       
-      console.log('[AUTH] logout: User state cleared, logout successful');
+      logger.log('[AUTH] logout: User state cleared, logout successful');
     } catch (error: any) {
-      console.error('[AUTH] logout: Error during logout:', error.message);
+      logger.error('[AUTH] logout: Error during logout:', error?.message || error);
       // Even if signOut fails, clear local state
       setUser(null);
       setSavedItems([]);
       
-      // Still try to clear storage
+      // Still try to clear secure storage
       if (userEmail) {
         try {
-          await AsyncStorage.removeItem(`username_${userEmail}`);
-          await AsyncStorage.removeItem(`cognito_username_${userEmail}`);
+          await clearSecureUserData(userEmail);
         } catch (storageError) {
           // Ignore storage errors
         }
@@ -652,7 +743,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     updateProfile,
   };
 
-  console.log('[AUTH] AuthProvider: Rendering with context value, loading:', loading, 'user:', user?.email || 'null');
+  logger.log('[AUTH] AuthProvider: Rendering');
 
   return (
     <AuthContext.Provider value={contextValue}>
@@ -664,8 +755,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 export function useAuth() {
   const context = useContext(AuthContext);
   if (context === undefined) {
-    console.error('[AUTH] useAuth: Called outside of AuthProvider');
-    console.error('[AUTH] useAuth: Stack trace:', new Error().stack);
+    logger.error('[AUTH] useAuth: Called outside of AuthProvider');
     throw new Error('useAuth must be used within an AuthProvider. Make sure AuthProvider wraps your component tree.');
   }
   return context;

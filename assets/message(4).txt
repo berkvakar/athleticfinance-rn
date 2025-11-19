@@ -1,0 +1,1204 @@
+{
+            "id": 3,
+            "title": "Athletics and Finance: Beyond the Game",
+            "hero_image_id": null,
+            "content": {
+                "root": {
+                    "type": "root",
+                    "format": "",
+                    "indent": 0,
+                    "version": 1,
+                    "children": [
+                        {
+                            "type": "paragraph",
+                            "format": "",
+                            "indent": 0,
+                            "version": 1,
+                            "children": [],
+                            "direction": null,
+                            "textStyle": "",
+                            "textFormat": 0
+                        },
+                        {
+                            "type": "paragraph",
+                            "format": "",
+                            "indent": 0,
+                            "version": 1,
+                            "children": [],
+                            "direction": null,
+                            "textStyle": "",
+                            "textFormat": 0
+                        },
+                        {
+                            "type": "paragraph",
+                            "format": "",
+                            "indent": 0,
+                            "version": 1,
+                            "children": [],
+                            "direction": null,
+                            "textStyle": "",
+                            "textFormat": 0
+                        },
+                        {
+                            "tag": "h2",
+                            "type": "heading",
+                            "format": "",
+                            "indent": 0,
+                            "version": 1,
+                            "children": [
+                                {
+                                    "mode": "normal",
+                                    "text": "Athletics and Finance: Beyond the Game",
+                                    "type": "text",
+                                    "style": "",
+                                    "detail": 0,
+                                    "format": 0,
+                                    "version": 1
+                                }
+                            ],
+                            "direction": null
+                        },
+                        {
+                            "type": "paragraph",
+                            "format": "",
+                            "indent": 0,
+                            "version": 1,
+                            "children": [
+                                {
+                                    "mode": "normal",
+                                    "text": "In the world of sports, we often focus on the heroics, the records, the clutch moments. But beneath all of the spectacle lies a rich—and complex—financial engine. Whether at the professional level or within collegiate athletics, the intersection of sport and money is powerful, consequential, and sometimes surprising. Here are several key themes to understand.",
+                                    "type": "text",
+                                    "style": "",
+                                    "detail": 0,
+                                    "format": 0,
+                                    "version": 1
+                                }
+                            ],
+                            "direction": null,
+                            "textStyle": "",
+                            "textFormat": 0
+                        },
+                        {
+                            "type": "paragraph",
+                            "format": "",
+                            "indent": 0,
+                            "version": 1,
+                            "children": [],
+                            "direction": null,
+                            "textStyle": "",
+                            "textFormat": 0
+                        },
+                        {
+                            "type": "block",
+                            "fields": {
+                                "id": "6919717dff892c6a4740420a",
+                                "media": 2,
+                                "blockName": "",
+                                "blockType": "mediaBlock"
+                            },
+                            "format": "",
+                            "version": 2
+                        },
+                        {
+                            "type": "paragraph",
+                            "format": "",
+                            "indent": 0,
+                            "version": 1,
+                            "children": [],
+                            "direction": null,
+                            "textStyle": "",
+                            "textFormat": 0
+                        },
+                        {
+                            "type": "horizontalrule",
+                            "version": 1
+                        },
+                        {
+                            "tag": "h3",
+                            "type": "heading",
+                            "format": "",
+                            "indent": 0,
+                            "version": 1,
+                            "children": [
+                                {
+                                    "mode": "normal",
+                                    "text": "1. Money flows in many directions",
+                                    "type": "text",
+                                    "style": "",
+                                    "detail": 0,
+                                    "format": 0,
+                                    "version": 1
+                                }
+                            ],
+                            "direction": null
+                        },
+                        {
+                            "type": "paragraph",
+                            "format": "",
+                            "indent": 0,
+                            "version": 1,
+                            "children": [
+                                {
+                                    "mode": "normal",
+                                    "text": "From ticket sales and broadcasting rights to sponsorships, athlete contracts and facilities, the financial architecture of athletics is broader than most fans realise.",
+                                    "type": "text",
+                                    "style": "",
+                                    "detail": 0,
+                                    "format": 0,
+                                    "version": 1
+                                }
+                            ],
+                            "direction": null,
+                            "textStyle": "",
+                            "textFormat": 0
+                        },
+                        {
+                            "type": "paragraph",
+                            "format": "",
+                            "indent": 0,
+                            "version": 1,
+                            "children": [
+                                {
+                                    "mode": "normal",
+                                    "text": "For example, the NCAA reports that the top college athletics programs often generate hundreds of millions of dollars in total revenue each year. (",
+                                    "type": "text",
+                                    "style": "",
+                                    "detail": 0,
+                                    "format": 0,
+                                    "version": 1
+                                },
+                                {
+                                    "id": "69197171ff892c6a47404202",
+                                    "type": "link",
+                                    "fields": {
+                                        "url": "https://sportsdata.usatoday.com/ncaa/finances?utm_source=chatgpt.com",
+                                        "newTab": false,
+                                        "linkType": "custom"
+                                    },
+                                    "format": "",
+                                    "indent": 0,
+                                    "version": 3,
+                                    "children": [
+                                        {
+                                            "mode": "normal",
+                                            "text": "USA TODAY",
+                                            "type": "text",
+                                            "style": "",
+                                            "detail": 0,
+                                            "format": 0,
+                                            "version": 1
+                                        }
+                                    ],
+                                    "direction": null
+                                },
+                                {
+                                    "mode": "normal",
+                                    "text": ")",
+                                    "type": "text",
+                                    "style": "",
+                                    "detail": 0,
+                                    "format": 0,
+                                    "version": 1
+                                }
+                            ],
+                            "direction": null,
+                            "textStyle": "",
+                            "textFormat": 0
+                        },
+                        {
+                            "type": "paragraph",
+                            "format": "",
+                            "indent": 0,
+                            "version": 1,
+                            "children": [
+                                {
+                                    "mode": "normal",
+                                    "text": "On the management side, sports-finance experts identify budgeting, revenue generation and cost-control as critical disciplines in team and league operations. (",
+                                    "type": "text",
+                                    "style": "",
+                                    "detail": 0,
+                                    "format": 0,
+                                    "version": 1
+                                },
+                                {
+                                    "id": "69197171ff892c6a47404203",
+                                    "type": "link",
+                                    "fields": {
+                                        "url": "https://mygreenbuck.com/what-does-sports-finance-mean-and-how-does-it-work/?utm_source=chatgpt.com",
+                                        "newTab": false,
+                                        "linkType": "custom"
+                                    },
+                                    "format": "",
+                                    "indent": 0,
+                                    "version": 3,
+                                    "children": [
+                                        {
+                                            "mode": "normal",
+                                            "text": "mygreenbuck.com",
+                                            "type": "text",
+                                            "style": "",
+                                            "detail": 0,
+                                            "format": 0,
+                                            "version": 1
+                                        }
+                                    ],
+                                    "direction": null
+                                },
+                                {
+                                    "mode": "normal",
+                                    "text": ")",
+                                    "type": "text",
+                                    "style": "",
+                                    "detail": 0,
+                                    "format": 0,
+                                    "version": 1
+                                }
+                            ],
+                            "direction": null,
+                            "textStyle": "",
+                            "textFormat": 0
+                        },
+                        {
+                            "type": "paragraph",
+                            "format": "",
+                            "indent": 0,
+                            "version": 1,
+                            "children": [
+                                {
+                                    "mode": "normal",
+                                    "text": "In practice, things like media rights and venue deals can dwarf what one might expect just from ticket sales or merchandising. (",
+                                    "type": "text",
+                                    "style": "",
+                                    "detail": 0,
+                                    "format": 0,
+                                    "version": 1
+                                },
+                                {
+                                    "id": "69197171ff892c6a47404204",
+                                    "type": "link",
+                                    "fields": {
+                                        "url": "https://www.gogamechange.com/blog/financial-impact-of-college-sports/?utm_source=chatgpt.com",
+                                        "newTab": false,
+                                        "linkType": "custom"
+                                    },
+                                    "format": "",
+                                    "indent": 0,
+                                    "version": 3,
+                                    "children": [
+                                        {
+                                            "mode": "normal",
+                                            "text": "GAME CHANGE",
+                                            "type": "text",
+                                            "style": "",
+                                            "detail": 0,
+                                            "format": 0,
+                                            "version": 1
+                                        }
+                                    ],
+                                    "direction": null
+                                },
+                                {
+                                    "mode": "normal",
+                                    "text": ")",
+                                    "type": "text",
+                                    "style": "",
+                                    "detail": 0,
+                                    "format": 0,
+                                    "version": 1
+                                }
+                            ],
+                            "direction": null,
+                            "textStyle": "",
+                            "textFormat": 0
+                        },
+                        {
+                            "type": "paragraph",
+                            "format": "",
+                            "indent": 0,
+                            "version": 1,
+                            "children": [
+                                {
+                                    "mode": "normal",
+                                    "text": "Implications:",
+                                    "type": "text",
+                                    "style": "",
+                                    "detail": 0,
+                                    "format": 1,
+                                    "version": 1
+                                },
+                                {
+                                    "mode": "normal",
+                                    "text": " For athletes, administrators and fans alike, understanding where money comes from (and where it goes) can deepen appreciation for how sports are structured—and why certain decisions get made (e.g., facility investment, team relocations, salary negotiations).",
+                                    "type": "text",
+                                    "style": "",
+                                    "detail": 0,
+                                    "format": 0,
+                                    "version": 1
+                                }
+                            ],
+                            "direction": null,
+                            "textStyle": "",
+                            "textFormat": 0
+                        },
+                        {
+                            "type": "horizontalrule",
+                            "version": 1
+                        },
+                        {
+                            "tag": "h3",
+                            "type": "heading",
+                            "format": "",
+                            "indent": 0,
+                            "version": 1,
+                            "children": [
+                                {
+                                    "mode": "normal",
+                                    "text": "2. Athletes’ finances matter… now and later",
+                                    "type": "text",
+                                    "style": "",
+                                    "detail": 0,
+                                    "format": 0,
+                                    "version": 1
+                                }
+                            ],
+                            "direction": null
+                        },
+                        {
+                            "type": "paragraph",
+                            "format": "",
+                            "indent": 0,
+                            "version": 1,
+                            "children": [
+                                {
+                                    "mode": "normal",
+                                    "text": "Professional and collegiate athletes alike face financial terrain that’s both high-stakes and somewhat unique.",
+                                    "type": "text",
+                                    "style": "",
+                                    "detail": 0,
+                                    "format": 0,
+                                    "version": 1
+                                }
+                            ],
+                            "direction": null,
+                            "textStyle": "",
+                            "textFormat": 0
+                        },
+                        {
+                            "type": "paragraph",
+                            "format": "",
+                            "indent": 0,
+                            "version": 1,
+                            "children": [
+                                {
+                                    "mode": "normal",
+                                    "text": "Some athletes build long-term security through smart investments and financial education; others struggle or even face bankruptcy after the spotlight dims. (",
+                                    "type": "text",
+                                    "style": "",
+                                    "detail": 0,
+                                    "format": 0,
+                                    "version": 1
+                                },
+                                {
+                                    "id": "69197171ff892c6a47404205",
+                                    "type": "link",
+                                    "fields": {
+                                        "url": "https://ultimatecapper.com/the-intersection-of-sports-and-finance-how-athletes-manage-their-wealth-201904/?utm_source=chatgpt.com",
+                                        "newTab": false,
+                                        "linkType": "custom"
+                                    },
+                                    "format": "",
+                                    "indent": 0,
+                                    "version": 3,
+                                    "children": [
+                                        {
+                                            "mode": "normal",
+                                            "text": "ultimatecapper.com",
+                                            "type": "text",
+                                            "style": "",
+                                            "detail": 0,
+                                            "format": 0,
+                                            "version": 1
+                                        }
+                                    ],
+                                    "direction": null
+                                },
+                                {
+                                    "mode": "normal",
+                                    "text": ")",
+                                    "type": "text",
+                                    "style": "",
+                                    "detail": 0,
+                                    "format": 0,
+                                    "version": 1
+                                }
+                            ],
+                            "direction": null,
+                            "textStyle": "",
+                            "textFormat": 0
+                        },
+                        {
+                            "type": "paragraph",
+                            "format": "",
+                            "indent": 0,
+                            "version": 1,
+                            "children": [
+                                {
+                                    "mode": "normal",
+                                    "text": "For college athletes, the evolving rules around name/image/likeness (NIL) deals, revenue sharing, and scholarship funding mean their financial opportunities (and risks) are changing fast.",
+                                    "type": "text",
+                                    "style": "",
+                                    "detail": 0,
+                                    "format": 0,
+                                    "version": 1
+                                }
+                            ],
+                            "direction": null,
+                            "textStyle": "",
+                            "textFormat": 0
+                        },
+                        {
+                            "type": "paragraph",
+                            "format": "",
+                            "indent": 0,
+                            "version": 1,
+                            "children": [
+                                {
+                                    "mode": "normal",
+                                    "text": "On the professional side, contracts often include big upfront payments, endorsements, and other satellites—so managing income, taxes, career length and post-career transition becomes essential.",
+                                    "type": "text",
+                                    "style": "",
+                                    "detail": 0,
+                                    "format": 0,
+                                    "version": 1
+                                }
+                            ],
+                            "direction": null,
+                            "textStyle": "",
+                            "textFormat": 0
+                        },
+                        {
+                            "type": "paragraph",
+                            "format": "",
+                            "indent": 0,
+                            "version": 1,
+                            "children": [
+                                {
+                                    "mode": "normal",
+                                    "text": "Implications:",
+                                    "type": "text",
+                                    "style": "",
+                                    "detail": 0,
+                                    "format": 1,
+                                    "version": 1
+                                },
+                                {
+                                    "mode": "normal",
+                                    "text": " If you’re an athlete (or working with one) the financial side isn’t optional. It’s as much part of the career plan as training, competition and recovery. For teams or leagues, understanding athlete financial wellbeing is also good business (and good ethics).",
+                                    "type": "text",
+                                    "style": "",
+                                    "detail": 0,
+                                    "format": 0,
+                                    "version": 1
+                                }
+                            ],
+                            "direction": null,
+                            "textStyle": "",
+                            "textFormat": 0
+                        },
+                        {
+                            "type": "horizontalrule",
+                            "version": 1
+                        },
+                        {
+                            "tag": "h3",
+                            "type": "heading",
+                            "format": "",
+                            "indent": 0,
+                            "version": 1,
+                            "children": [
+                                {
+                                    "mode": "normal",
+                                    "text": "3. Institutional finance is more than “just sports”",
+                                    "type": "text",
+                                    "style": "",
+                                    "detail": 0,
+                                    "format": 0,
+                                    "version": 1
+                                }
+                            ],
+                            "direction": null
+                        },
+                        {
+                            "type": "paragraph",
+                            "format": "",
+                            "indent": 0,
+                            "version": 1,
+                            "children": [
+                                {
+                                    "mode": "normal",
+                                    "text": "Teams, leagues, colleges and universities operate like businesses, though with their own unique rules, pressures and stakeholders.",
+                                    "type": "text",
+                                    "style": "",
+                                    "detail": 0,
+                                    "format": 0,
+                                    "version": 1
+                                }
+                            ],
+                            "direction": null,
+                            "textStyle": "",
+                            "textFormat": 0
+                        },
+                        {
+                            "type": "paragraph",
+                            "format": "",
+                            "indent": 0,
+                            "version": 1,
+                            "children": [
+                                {
+                                    "mode": "normal",
+                                    "text": "Finance in sport management must account for revenue, expenses, debt and capital budgeting—but also intangible elements like fan loyalty, brand value and athlete performance. (",
+                                    "type": "text",
+                                    "style": "",
+                                    "detail": 0,
+                                    "format": 0,
+                                    "version": 1
+                                },
+                                {
+                                    "id": "69197171ff892c6a47404206",
+                                    "type": "link",
+                                    "fields": {
+                                        "url": "https://www.managementstudyguide.com/finance-in-sports-management.htm?utm_source=chatgpt.com",
+                                        "newTab": false,
+                                        "linkType": "custom"
+                                    },
+                                    "format": "",
+                                    "indent": 0,
+                                    "version": 3,
+                                    "children": [
+                                        {
+                                            "mode": "normal",
+                                            "text": "Management Study Guide",
+                                            "type": "text",
+                                            "style": "",
+                                            "detail": 0,
+                                            "format": 0,
+                                            "version": 1
+                                        }
+                                    ],
+                                    "direction": null
+                                },
+                                {
+                                    "mode": "normal",
+                                    "text": ")",
+                                    "type": "text",
+                                    "style": "",
+                                    "detail": 0,
+                                    "format": 0,
+                                    "version": 1
+                                }
+                            ],
+                            "direction": null,
+                            "textStyle": "",
+                            "textFormat": 0
+                        },
+                        {
+                            "type": "paragraph",
+                            "format": "",
+                            "indent": 0,
+                            "version": 1,
+                            "children": [
+                                {
+                                    "mode": "normal",
+                                    "text": "Athletic departments at major colleges show up on revenue lists just like any business unit: e.g., the top-ranked programs generate over $200 million in revenue in a year. (",
+                                    "type": "text",
+                                    "style": "",
+                                    "detail": 0,
+                                    "format": 0,
+                                    "version": 1
+                                },
+                                {
+                                    "id": "69197171ff892c6a47404207",
+                                    "type": "link",
+                                    "fields": {
+                                        "url": "https://sportsdata.usatoday.com/ncaa/finances?utm_source=chatgpt.com",
+                                        "newTab": false,
+                                        "linkType": "custom"
+                                    },
+                                    "format": "",
+                                    "indent": 0,
+                                    "version": 3,
+                                    "children": [
+                                        {
+                                            "mode": "normal",
+                                            "text": "USA TODAY",
+                                            "type": "text",
+                                            "style": "",
+                                            "detail": 0,
+                                            "format": 0,
+                                            "version": 1
+                                        }
+                                    ],
+                                    "direction": null
+                                },
+                                {
+                                    "mode": "normal",
+                                    "text": ")",
+                                    "type": "text",
+                                    "style": "",
+                                    "detail": 0,
+                                    "format": 0,
+                                    "version": 1
+                                }
+                            ],
+                            "direction": null,
+                            "textStyle": "",
+                            "textFormat": 0
+                        },
+                        {
+                            "type": "paragraph",
+                            "format": "",
+                            "indent": 0,
+                            "version": 1,
+                            "children": [
+                                {
+                                    "mode": "normal",
+                                    "text": "These institutions make decisions about facility construction, coaching salaries, media deals and more—each with financial risk and reward baked in. (",
+                                    "type": "text",
+                                    "style": "",
+                                    "detail": 0,
+                                    "format": 0,
+                                    "version": 1
+                                },
+                                {
+                                    "id": "69197171ff892c6a47404208",
+                                    "type": "link",
+                                    "fields": {
+                                        "url": "https://businessofcollegesports.com/other/the-multibillion-dollar-industry-unveiling-the-business-of-college-sports/?utm_source=chatgpt.com",
+                                        "newTab": false,
+                                        "linkType": "custom"
+                                    },
+                                    "format": "",
+                                    "indent": 0,
+                                    "version": 3,
+                                    "children": [
+                                        {
+                                            "mode": "normal",
+                                            "text": "Business of College Sports®",
+                                            "type": "text",
+                                            "style": "",
+                                            "detail": 0,
+                                            "format": 0,
+                                            "version": 1
+                                        }
+                                    ],
+                                    "direction": null
+                                },
+                                {
+                                    "mode": "normal",
+                                    "text": ")",
+                                    "type": "text",
+                                    "style": "",
+                                    "detail": 0,
+                                    "format": 0,
+                                    "version": 1
+                                }
+                            ],
+                            "direction": null,
+                            "textStyle": "",
+                            "textFormat": 0
+                        },
+                        {
+                            "type": "paragraph",
+                            "format": "",
+                            "indent": 0,
+                            "version": 1,
+                            "children": [
+                                {
+                                    "mode": "normal",
+                                    "text": "Implications:",
+                                    "type": "text",
+                                    "style": "",
+                                    "detail": 0,
+                                    "format": 1,
+                                    "version": 1
+                                },
+                                {
+                                    "mode": "normal",
+                                    "text": " For administrators, coaches or even investors looking into sports, treating the operation like a business—while respecting the “sport” side—is key. Sustainability, governance and strategic planning matter just as much as player performance.",
+                                    "type": "text",
+                                    "style": "",
+                                    "detail": 0,
+                                    "format": 0,
+                                    "version": 1
+                                }
+                            ],
+                            "direction": null,
+                            "textStyle": "",
+                            "textFormat": 0
+                        },
+                        {
+                            "type": "horizontalrule",
+                            "version": 1
+                        },
+                        {
+                            "tag": "h3",
+                            "type": "heading",
+                            "format": "",
+                            "indent": 0,
+                            "version": 1,
+                            "children": [
+                                {
+                                    "mode": "normal",
+                                    "text": "4. The landscape is shifting",
+                                    "type": "text",
+                                    "style": "",
+                                    "detail": 0,
+                                    "format": 0,
+                                    "version": 1
+                                }
+                            ],
+                            "direction": null
+                        },
+                        {
+                            "type": "paragraph",
+                            "format": "",
+                            "indent": 0,
+                            "version": 1,
+                            "children": [
+                                {
+                                    "mode": "normal",
+                                    "text": "The business of athletics is growing and evolving rapidly, with technology, regulation and social trends changing the rules of the game.",
+                                    "type": "text",
+                                    "style": "",
+                                    "detail": 0,
+                                    "format": 0,
+                                    "version": 1
+                                }
+                            ],
+                            "direction": null,
+                            "textStyle": "",
+                            "textFormat": 0
+                        },
+                        {
+                            "type": "paragraph",
+                            "format": "",
+                            "indent": 0,
+                            "version": 1,
+                            "children": [
+                                {
+                                    "mode": "normal",
+                                    "text": "The term “sports finance” is relatively new in its modern meaning: now it encompasses not just team budgets, but athlete contracts, digital rights, esports, fan engagement platforms and more. (",
+                                    "type": "text",
+                                    "style": "",
+                                    "detail": 0,
+                                    "format": 0,
+                                    "version": 1
+                                },
+                                {
+                                    "id": "69197171ff892c6a47404209",
+                                    "type": "link",
+                                    "fields": {
+                                        "url": "https://mygreenbuck.com/what-does-sports-finance-mean-and-how-does-it-work/?utm_source=chatgpt.com",
+                                        "newTab": false,
+                                        "linkType": "custom"
+                                    },
+                                    "format": "",
+                                    "indent": 0,
+                                    "version": 3,
+                                    "children": [
+                                        {
+                                            "mode": "normal",
+                                            "text": "mygreenbuck.com",
+                                            "type": "text",
+                                            "style": "",
+                                            "detail": 0,
+                                            "format": 0,
+                                            "version": 1
+                                        }
+                                    ],
+                                    "direction": null
+                                },
+                                {
+                                    "mode": "normal",
+                                    "text": ")",
+                                    "type": "text",
+                                    "style": "",
+                                    "detail": 0,
+                                    "format": 0,
+                                    "version": 1
+                                }
+                            ],
+                            "direction": null,
+                            "textStyle": "",
+                            "textFormat": 0
+                        },
+                        {
+                            "type": "paragraph",
+                            "format": "",
+                            "indent": 0,
+                            "version": 1,
+                            "children": [
+                                {
+                                    "mode": "normal",
+                                    "text": "Regulations around college sports (e.g., how athletes can monetise their NIL) are up-ending long-standing financial models.",
+                                    "type": "text",
+                                    "style": "",
+                                    "detail": 0,
+                                    "format": 0,
+                                    "version": 1
+                                }
+                            ],
+                            "direction": null,
+                            "textStyle": "",
+                            "textFormat": 0
+                        },
+                        {
+                            "type": "paragraph",
+                            "format": "",
+                            "indent": 0,
+                            "version": 1,
+                            "children": [
+                                {
+                                    "mode": "normal",
+                                    "text": "Globalisation, streaming, analytics and big data have opened new revenue paths—but also new risks and competitive pressures.",
+                                    "type": "text",
+                                    "style": "",
+                                    "detail": 0,
+                                    "format": 0,
+                                    "version": 1
+                                }
+                            ],
+                            "direction": null,
+                            "textStyle": "",
+                            "textFormat": 0
+                        },
+                        {
+                            "type": "paragraph",
+                            "format": "",
+                            "indent": 0,
+                            "version": 1,
+                            "children": [
+                                {
+                                    "mode": "normal",
+                                    "text": "Implications:",
+                                    "type": "text",
+                                    "style": "",
+                                    "detail": 0,
+                                    "format": 1,
+                                    "version": 1
+                                },
+                                {
+                                    "mode": "normal",
+                                    "text": " Being financially literate in sports today means staying current. What worked five years ago may not work next season. For athletes, teams or organisations, adaptability is a competitive advantage.",
+                                    "type": "text",
+                                    "style": "",
+                                    "detail": 0,
+                                    "format": 0,
+                                    "version": 1
+                                }
+                            ],
+                            "direction": null,
+                            "textStyle": "",
+                            "textFormat": 0
+                        },
+                        {
+                            "type": "horizontalrule",
+                            "version": 1
+                        },
+                        {
+                            "tag": "h3",
+                            "type": "heading",
+                            "format": "",
+                            "indent": 0,
+                            "version": 1,
+                            "children": [
+                                {
+                                    "mode": "normal",
+                                    "text": "5. Key lessons & takeaways",
+                                    "type": "text",
+                                    "style": "",
+                                    "detail": 0,
+                                    "format": 0,
+                                    "version": 1
+                                }
+                            ],
+                            "direction": null
+                        },
+                        {
+                            "type": "paragraph",
+                            "format": "",
+                            "indent": 0,
+                            "version": 1,
+                            "children": [
+                                {
+                                    "mode": "normal",
+                                    "text": "Here are some practical takeaways for athletes, teams, or anyone interested in the intersection of athletics and finance:",
+                                    "type": "text",
+                                    "style": "",
+                                    "detail": 0,
+                                    "format": 0,
+                                    "version": 1
+                                }
+                            ],
+                            "direction": null,
+                            "textStyle": "",
+                            "textFormat": 0
+                        },
+                        {
+                            "type": "paragraph",
+                            "format": "",
+                            "indent": 0,
+                            "version": 1,
+                            "children": [
+                                {
+                                    "mode": "normal",
+                                    "text": "Budget early and plan ahead.",
+                                    "type": "text",
+                                    "style": "",
+                                    "detail": 0,
+                                    "format": 1,
+                                    "version": 1
+                                },
+                                {
+                                    "mode": "normal",
+                                    "text": " Whether you’re an athlete planning post-career or a team building a 10-year facility plan, financial foresight is vital.",
+                                    "type": "text",
+                                    "style": "",
+                                    "detail": 0,
+                                    "format": 0,
+                                    "version": 1
+                                }
+                            ],
+                            "direction": null,
+                            "textStyle": "",
+                            "textFormat": 0
+                        },
+                        {
+                            "type": "paragraph",
+                            "format": "",
+                            "indent": 0,
+                            "version": 1,
+                            "children": [
+                                {
+                                    "mode": "normal",
+                                    "text": "Diversify revenue streams.",
+                                    "type": "text",
+                                    "style": "",
+                                    "detail": 0,
+                                    "format": 1,
+                                    "version": 1
+                                },
+                                {
+                                    "mode": "normal",
+                                    "text": " Relying on a single income source (e.g., ticket sales or one superstar contract) can be risky.",
+                                    "type": "text",
+                                    "style": "",
+                                    "detail": 0,
+                                    "format": 0,
+                                    "version": 1
+                                }
+                            ],
+                            "direction": null,
+                            "textStyle": "",
+                            "textFormat": 0
+                        },
+                        {
+                            "type": "paragraph",
+                            "format": "",
+                            "indent": 0,
+                            "version": 1,
+                            "children": [
+                                {
+                                    "mode": "normal",
+                                    "text": "Invest in athlete education and wellbeing.",
+                                    "type": "text",
+                                    "style": "",
+                                    "detail": 0,
+                                    "format": 1,
+                                    "version": 1
+                                },
+                                {
+                                    "mode": "normal",
+                                    "text": " Financial knowledge is part of performance. For institutions, supporting athlete financial literacy is both ethical and strategic.",
+                                    "type": "text",
+                                    "style": "",
+                                    "detail": 0,
+                                    "format": 0,
+                                    "version": 1
+                                }
+                            ],
+                            "direction": null,
+                            "textStyle": "",
+                            "textFormat": 0
+                        },
+                        {
+                            "type": "paragraph",
+                            "format": "",
+                            "indent": 0,
+                            "version": 1,
+                            "children": [
+                                {
+                                    "mode": "normal",
+                                    "text": "Understand the full ecosystem.",
+                                    "type": "text",
+                                    "style": "",
+                                    "detail": 0,
+                                    "format": 1,
+                                    "version": 1
+                                },
+                                {
+                                    "mode": "normal",
+                                    "text": " The value of sports goes beyond the playing field—brand, media, venue, community engagement all matter.",
+                                    "type": "text",
+                                    "style": "",
+                                    "detail": 0,
+                                    "format": 0,
+                                    "version": 1
+                                }
+                            ],
+                            "direction": null,
+                            "textStyle": "",
+                            "textFormat": 0
+                        },
+                        {
+                            "type": "paragraph",
+                            "format": "",
+                            "indent": 0,
+                            "version": 1,
+                            "children": [
+                                {
+                                    "mode": "normal",
+                                    "text": "Be strategic about change.",
+                                    "type": "text",
+                                    "style": "",
+                                    "detail": 0,
+                                    "format": 1,
+                                    "version": 1
+                                },
+                                {
+                                    "mode": "normal",
+                                    "text": " New technologies, regulations, and business models are emerging quickly. Stay nimble.",
+                                    "type": "text",
+                                    "style": "",
+                                    "detail": 0,
+                                    "format": 0,
+                                    "version": 1
+                                }
+                            ],
+                            "direction": null,
+                            "textStyle": "",
+                            "textFormat": 0
+                        },
+                        {
+                            "type": "horizontalrule",
+                            "version": 1
+                        },
+                        {
+                            "tag": "h2",
+                            "type": "heading",
+                            "format": "",
+                            "indent": 0,
+                            "version": 1,
+                            "children": [
+                                {
+                                    "mode": "normal",
+                                    "text": "Conclusion",
+                                    "type": "text",
+                                    "style": "",
+                                    "detail": 0,
+                                    "format": 0,
+                                    "version": 1
+                                }
+                            ],
+                            "direction": null
+                        },
+                        {
+                            "type": "paragraph",
+                            "format": "",
+                            "indent": 0,
+                            "version": 1,
+                            "children": [
+                                {
+                                    "mode": "normal",
+                                    "text": "Athletics isn’t just about records, trophies and highlights—it’s also about finance: the money, the management, the business engine that keeps it all running. Whether you’re cheering from the stands, competing on the field, or working behind the scenes, recognising how sport and money interact adds depth to the experience.",
+                                    "type": "text",
+                                    "style": "",
+                                    "detail": 0,
+                                    "format": 0,
+                                    "version": 1
+                                }
+                            ],
+                            "direction": null,
+                            "textStyle": "",
+                            "textFormat": 0
+                        },
+                        {
+                            "type": "paragraph",
+                            "format": "",
+                            "indent": 0,
+                            "version": 1,
+                            "children": [
+                                {
+                                    "mode": "normal",
+                                    "text": "If you like, I can pull together ",
+                                    "type": "text",
+                                    "style": "",
+                                    "detail": 0,
+                                    "format": 0,
+                                    "version": 1
+                                },
+                                {
+                                    "mode": "normal",
+                                    "text": "a longer article",
+                                    "type": "text",
+                                    "style": "",
+                                    "detail": 0,
+                                    "format": 1,
+                                    "version": 1
+                                },
+                                {
+                                    "mode": "normal",
+                                    "text": " (with case studies of specific athletes or teams) or ",
+                                    "type": "text",
+                                    "style": "",
+                                    "detail": 0,
+                                    "format": 0,
+                                    "version": 1
+                                },
+                                {
+                                    "mode": "normal",
+                                    "text": "infographic-style visuals",
+                                    "type": "text",
+                                    "style": "",
+                                    "detail": 0,
+                                    "format": 1,
+                                    "version": 1
+                                },
+                                {
+                                    "mode": "normal",
+                                    "text": " exploring these concepts. Would you like me to do that?",
+                                    "type": "text",
+                                    "style": "",
+                                    "detail": 0,
+                                    "format": 0,
+                                    "version": 1
+                                }
+                            ],
+                            "direction": null,
+                            "textStyle": "",
+                            "textFormat": 0
+                        }
+                    ],
+                    "direction": null
+                }
+            },
+            "meta_title": null,
+            "meta_image_id": null,
+            "meta_description": null,
+            "published_at": "2025-11-16T06:39:03.510Z",
+            "generate_slug": false,
+            "slug": "athletics-and-finance-beyond-the-game",
+            "updated_at": "2025-11-16T06:39:03.530Z",
+            "created_at": "2025-11-16T06:36:20.304Z",
+            "_status": "published"
+        },

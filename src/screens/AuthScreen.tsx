@@ -18,6 +18,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/AppNavigator';
 import { useAuth } from '../contexts/AuthContext';
 import { apiClient } from '../lib/api';
+import { logger } from '../lib/logger';
 // @ts-ignore - Image import
 import afLogo from '../../assets/af-logo.png';
 
@@ -364,11 +365,18 @@ export default function AuthScreen() {
       if (result && 'requiresVerification' in result && result.requiresVerification) {
         // Use the cleaned username from the signup result (already has @ and AF removed)
         const cognitoUsername = result.username || finalUsername.replace(/^@+/, '').replace(/af$/i, '').toLowerCase().trim();
+        
+        // SECURITY: Store password temporarily in state (will be cleared after verification)
+        // This is necessary for auto-login after email verification
         setVerificationData({
           email: formData.email,
           username: cognitoUsername,
           password: formData.password,
         });
+        
+        // SECURITY: Clear password from formData immediately after copying
+        setFormData({ ...formData, password: '' });
+        
         setIsLoading(false);
         // Scroll to verification slide
         setCurrentSlide(7);
@@ -378,10 +386,15 @@ export default function AuthScreen() {
         }, 500);
       } else {
         // Navigation will happen automatically via AppNavigator when user state updates
+        // SECURITY: Clear password from memory
+        setFormData({ ...formData, password: '' });
       }
     } catch (error: any) {
-      console.error('[AUTH] handleSubmit: Error during signup process:', error.message);
+      logger.error('[AUTH] handleSubmit: Error during signup process');
       setIsCheckingEmail(false);
+      
+      // SECURITY: Clear password on error
+      setFormData({ ...formData, password: '' });
       
       if (error.message.includes('already exists') || 
           error.message.includes('already taken') || 
@@ -413,7 +426,32 @@ export default function AuthScreen() {
   };
 
   const handleVerificationCodeChange = (index: number, value: string) => {
-    // Only allow numbers
+    // Handle paste - if multiple characters are entered
+    if (value.length > 1) {
+      // Extract only digits from pasted content
+      const digits = value.replace(/\D/g, '').slice(0, 6);
+      
+      if (digits.length > 0) {
+        const newCode = [...verificationCode];
+        
+        // Fill in the digits starting from current index
+        for (let i = 0; i < digits.length && (index + i) < 6; i++) {
+          newCode[index + i] = digits[i];
+        }
+        
+        setVerificationCode(newCode);
+        
+        // Clear error when user starts typing
+        if (verificationError) setVerificationError(null);
+        
+        // Focus on the next empty field or the last field
+        const nextIndex = Math.min(index + digits.length, 5);
+        verificationInputRefs.current[nextIndex]?.focus();
+      }
+      return;
+    }
+
+    // Only allow numbers for single character input
     if (value && !/^\d$/.test(value)) return;
 
     const newCode = [...verificationCode];
@@ -436,43 +474,45 @@ export default function AuthScreen() {
   };
 
   const handleVerificationSubmit = async () => {
-    console.log('[AUTH_SCREEN] handleVerificationSubmit: Starting verification');
+    logger.log('[AUTH_SCREEN] handleVerificationSubmit: Starting verification');
     
     if (!verificationData) {
-      console.log('[AUTH_SCREEN] handleVerificationSubmit: No verification data available');
+      logger.log('[AUTH_SCREEN] handleVerificationSubmit: No verification data available');
       return;
     }
     
     const code = verificationCode.join('');
-    console.log('[AUTH_SCREEN] handleVerificationSubmit: Verification code:', code);
-    console.log('[AUTH_SCREEN] handleVerificationSubmit: Username:', verificationData.username);
-    console.log('[AUTH_SCREEN] handleVerificationSubmit: Email:', verificationData.email);
     
     if (code.length !== 6) {
-      console.log('[AUTH_SCREEN] handleVerificationSubmit: Code length invalid:', code.length);
+      logger.log('[AUTH_SCREEN] handleVerificationSubmit: Code length invalid');
       return;
     }
 
-    console.log('[AUTH_SCREEN] handleVerificationSubmit: Code is valid, starting verification...');
+    logger.log('[AUTH_SCREEN] handleVerificationSubmit: Code is valid, starting verification...');
     setIsVerifying(true);
     setVerificationError(null);
     
     try {
-      console.log('[AUTH_SCREEN] handleVerificationSubmit: Calling confirmSignUp...');
+      logger.log('[AUTH_SCREEN] handleVerificationSubmit: Calling confirmSignUp...');
       await confirmSignUp(verificationData.username, code, verificationData.password, verificationData.email);
-      console.log('[AUTH_SCREEN] handleVerificationSubmit: confirmSignUp completed successfully');
-      console.log('[AUTH_SCREEN] handleVerificationSubmit: Navigation will happen automatically via AppNavigator when user state updates');
+      logger.log('[AUTH_SCREEN] handleVerificationSubmit: confirmSignUp completed successfully');
+      
+      // SECURITY: Clear password from memory after successful verification
+      setVerificationData({
+        ...verificationData,
+        password: '',
+      });
+      
+      logger.log('[AUTH_SCREEN] handleVerificationSubmit: Navigation will happen automatically via AppNavigator when user state updates');
     } catch (error: any) {
-      console.error('[AUTH_SCREEN] handleVerificationSubmit: Error during verification:', error);
-      console.error('[AUTH_SCREEN] handleVerificationSubmit: Error message:', error?.message);
+      logger.error('[AUTH_SCREEN] handleVerificationSubmit: Error during verification');
       // Clear code on error
       setVerificationCode(['', '', '', '', '', '']);
       verificationInputRefs.current[0]?.focus();
       const errorMessage = error.message || 'Invalid verification code. Please try again.';
-      console.log('[AUTH_SCREEN] handleVerificationSubmit: Setting error message:', errorMessage);
       setVerificationError(errorMessage);
     } finally {
-      console.log('[AUTH_SCREEN] handleVerificationSubmit: Verification process completed, setting isVerifying to false');
+      logger.log('[AUTH_SCREEN] handleVerificationSubmit: Verification process completed');
       setIsVerifying(false);
     }
   };
@@ -723,7 +763,7 @@ export default function AuthScreen() {
                     onChangeText={(value) => handleVerificationCodeChange(index, value)}
                     onKeyPress={(e) => handleVerificationKeyPress(index, e)}
                     keyboardType="numeric"
-                    maxLength={1}
+                    maxLength={6}
                     selectTextOnFocus
                   />
                 ))}
@@ -1013,3 +1053,4 @@ const styles = StyleSheet.create({
     backgroundColor: '#FEF2F2',
   },
 });
+

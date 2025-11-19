@@ -76,7 +76,7 @@ export default function ProfileScreen() {
       try {
         console.log('[PROFILE] Loading profile data for username:', user.username);
         const profileData = await apiClient.getUserProfile(user.username);
-        console.log('[PROFILE] ✅ Profile data loaded:', profileData);
+        console.log('[PROFILE] Profile data loaded:', profileData);
         
         // Update state with DynamoDB data
         setBio(profileData.description || '');
@@ -85,13 +85,13 @@ export default function ProfileScreen() {
         
         console.log('[PROFILE] Profile state updated');
       } catch (error: any) {
-        console.warn('[PROFILE] ⚠️ Could not load profile from DynamoDB:', error.message);
+        console.warn('[PROFILE] Could not load profile from DynamoDB:', error.message);
         // Use data from AuthContext if available
         setBio(user.bio || '');
         setProfileImage(user.avatar || null);
       }
       
-      // Load user comments (TODO: implement when comments endpoint is ready)
+      // Load user comments
       try {
         // const userComments = await apiClient.getUserComments(user.id);
         // setComments(userComments);

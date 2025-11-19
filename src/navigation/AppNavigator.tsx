@@ -11,6 +11,7 @@ import AFPlusScreen from '../screens/AFPlusScreen';
 import HomeScreen from '../screens/HomeScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import SettingsScreen from '../screens/SettingsScreen';
+import ArticleDetailScreen from '../screens/ArticleDetailScreen';
 import { View, Text, StyleSheet, Image } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import LoadingScreen from '../components/LoadingScreen';
@@ -26,6 +27,20 @@ export type RootStackParamList = {
   Welcome: undefined;
   MainTabs: undefined;
   Settings: undefined;
+  ArticleDetail: {
+    article: {
+      id: number;
+      title: string;
+      hero_image_id: number | null;
+      content: {
+        root: {
+          children: any[];
+        };
+      };
+      published_at: string;
+      slug: string;
+    };
+  };
 };
 
 export type MainTabParamList = {
@@ -148,6 +163,14 @@ export default function AppNavigator() {
             <Stack.Screen 
               name="Settings" 
               component={SettingsScreen}
+              options={{
+                headerShown: false,
+                animation: 'slide_from_right',
+              }}
+            />
+            <Stack.Screen 
+              name="ArticleDetail" 
+              component={ArticleDetailScreen}
               options={{
                 headerShown: false,
                 animation: 'slide_from_right',

@@ -20,20 +20,17 @@ import type { RootStackParamList } from '../navigation/AppNavigator';
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 interface Article {
-  id: string;
+  id: number;
   title: string;
-  excerpt: string;
-  author: string;
-  date: Date;
-  readTime: string;
-  isPremium: boolean;
-  image?: string;
-  commentCount?: number;
-  topComment?: {
-    author: string;
-    isPremium: boolean;
-    text: string;
+  hero_image_id: number | null;
+  content: {
+    root: {
+      children: any[];
+    };
   };
+  published_at: string;
+  slug: string;
+  imageUrl?: string;
 }
 
 export default function HomeScreen() {
@@ -50,55 +47,46 @@ export default function HomeScreen() {
 
   const loadArticles = async () => {
     try {
-      // TODO: Replace with actual API call to fetch articles
-      // When implementing real API call, set loading state:
-      // setLoading(true);
-      // const data = await apiClient.getArticles();
-      // setArticles(data);
-      // setLoading(false);
-      
-      // For now, articles array will be empty (no mock data)
-      setArticles([]);
+      setLoading(true);
+      const posts = await apiClient.getRecentPosts();
+      setArticles(posts);
+      setLoading(false);
     } catch (error) {
       console.error('Error loading articles:', error);
       setLoading(false);
+      // Keep articles empty on error - user will see empty state
+      setArticles([]);
     }
   };
 
-  // Filter articles based on premium status and search query - memoized for performance
-  const visibleArticles = useMemo(() => {
-    return articles.filter((article) => {
-      if (!article.isPremium) return true;
-      return user?.isPremium;
-    });
-  }, [articles, user?.isPremium]);
-
+  // Filter articles based on search query - memoized for performance
   const searchFilteredArticles = useMemo(() => {
-    if (!searchQuery) return visibleArticles;
+    if (!searchQuery) return articles;
     const query = searchQuery.toLowerCase();
-    return visibleArticles.filter(
+    return articles.filter(
       (article) =>
-        article.title.toLowerCase().includes(query) ||
-        article.excerpt.toLowerCase().includes(query)
+        article.title.toLowerCase().includes(query)
     );
-  }, [visibleArticles, searchQuery]);
+  }, [articles, searchQuery]);
 
-  // Non-premium users see limited articles - memoized for performance
-  const displayArticles = useMemo(() => {
-    return user?.isPremium
-      ? searchFilteredArticles
-      : searchFilteredArticles.slice(0, 7);
-  }, [searchFilteredArticles, user?.isPremium]);
+  const displayArticles = searchFilteredArticles;
 
-  const currentDate = displayArticles[0]?.date || new Date();
+  const currentDate = displayArticles[0]?.published_at 
+    ? new Date(displayArticles[0].published_at) 
+    : new Date();
 
-  const handleArticlePress = useCallback((articleId: string) => {
-    // TODO: Navigate to article detail screen
-    console.log('Navigate to article:', articleId);
-  }, []);
+  const handleArticlePress = useCallback((article: Article) => {
+    navigation.navigate('ArticleDetail', { article });
+  }, [navigation]);
 
   const renderArticle = useCallback(({ item }: { item: Article }) => (
-    <ArticleCard {...item} onPress={() => handleArticlePress(item.id)} />
+    <ArticleCard 
+      id={item.id}
+      title={item.title}
+      hero_image_id={item.hero_image_id}
+      imageUrl={item.imageUrl}
+      onPress={() => handleArticlePress(item)} 
+    />
   ), [handleArticlePress]);
 
   const renderEmptyState = () => (
@@ -108,6 +96,12 @@ export default function HomeScreen() {
       <Text style={styles.emptyStateSubtext}>
         Check back later for new content
       </Text>
+    </View>
+  );
+
+  const renderHeader = () => (
+    <View style={styles.headerContainer}>
+      <Text style={styles.headerTitle}>Articles</Text>
     </View>
   );
 
@@ -162,7 +156,7 @@ export default function HomeScreen() {
           <FlatList
             data={displayArticles}
             renderItem={renderArticle}
-            keyExtractor={(item) => item.id}
+            keyExtractor={(item) => item.id.toString()}
             contentContainerStyle={styles.listContent}
             showsVerticalScrollIndicator={false}
             style={styles.flatList}
@@ -170,6 +164,7 @@ export default function HomeScreen() {
             initialNumToRender={5}
             maxToRenderPerBatch={5}
             windowSize={10}
+            ListHeaderComponent={renderHeader}
           />
         )}
       </View>
@@ -208,6 +203,7 @@ const styles = StyleSheet.create({
   listContent: {
     flexGrow: 1,
     paddingBottom: 20,
+    paddingTop: 8,
   },
   loadingContainer: {
     flex: 1,
@@ -241,5 +237,15 @@ const styles = StyleSheet.create({
     color: '#999',
     marginTop: 8,
     textAlign: 'center',
+  },
+  headerContainer: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 8,
+  },
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#000',
   },
 });

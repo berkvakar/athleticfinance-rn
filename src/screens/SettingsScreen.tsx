@@ -4,7 +4,6 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  Alert,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -12,6 +11,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useAuth } from '../contexts/AuthContext';
 import Layout from '../components/Layout';
 import type { RootStackParamList } from '../navigation/AppNavigator';
+import { logger } from '../lib/logger';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -19,33 +19,17 @@ export default function SettingsScreen() {
   const navigation = useNavigation<NavigationProp>();
   const { logout } = useAuth();
 
-  const handleSignOut = () => {
-    Alert.alert(
-      'Sign Out',
-      'Are you sure you want to sign out?',
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-        {
-          text: 'Sign Out',
-          style: 'destructive',
-          onPress: () => {
-            console.log('[SETTINGS] handleSignOut: User confirmed sign out');
-            logout()
-              .then(() => {
-                console.log('[SETTINGS] handleSignOut: Logout successful');
-                // Navigation will happen automatically via AppNavigator when user state updates
-              })
-              .catch((error: any) => {
-                console.error('[SETTINGS] handleSignOut: Logout error:', error);
-                Alert.alert('Error', error.message || 'Failed to sign out. Please try again.');
-              });
-          },
-        },
-      ]
-    );
+  const handleSignOut = async () => {
+    try {
+      logger.log('[SETTINGS] handleSignOut: Starting sign out process');
+      await logout();
+      logger.log('[SETTINGS] handleSignOut: Logout successful');
+      // Navigation to Auth screen (welcome page) happens automatically via AppNavigator
+      // when user state becomes null
+    } catch (error: any) {
+      logger.error('[SETTINGS] handleSignOut: Logout error:', error?.message || error);
+      // Even on error, logout function clears local state, so user will be logged out
+    }
   };
 
   return (
