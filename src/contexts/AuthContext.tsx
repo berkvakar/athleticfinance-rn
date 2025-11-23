@@ -174,30 +174,61 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           email: email,
           name: attributes.name || '',
           username: usernameToUse,
-          isPremium: false, // Will be set later when custom attributes are added
+          isPremium: false, // Will be set from backend profile data
         };
         
-        // Try to fetch additional profile data from DynamoDB
-        // Use the actual Cognito username (without @) for the API call
-        const usernameForApi = cognitoUsername || usernameToUse.replace(/^@/, '').replace(/AF$/i, '');
-        console.log('🔍 [AUTH] loadUser: Username for API call:', usernameForApi);
-        
+        // Try to fetch additional profile data from backend /api/users/profile
         try {
-          logger.log('[AUTH] loadUser: Fetching profile from DynamoDB...');
-          const profile = await apiClient.getUserProfile(usernameToUse);
-          logger.log('[AUTH] loadUser: Profile fetched from DynamoDB');
+          logger.log('[AUTH] loadUser: Fetching profile from backend /api/users/profile...');
+          const profileResponse = await apiClient.getUserProfileFromBackend();
           
-          // Merge DynamoDB data with Cognito data
-          userData = {
-            ...userData,
-            bio: profile.description || undefined,
-            avatar: profile.profilePicture || undefined,
-            // You can add more fields here as needed
-          };
-          
-          logger.log('[AUTH] loadUser: Merged user data with DynamoDB profile');
+          if (profileResponse.success && profileResponse.profile) {
+            logger.log('[AUTH] loadUser: Profile fetched from backend successfully');
+            const profile = profileResponse.profile;
+            const userInfo = profileResponse.userInfo;
+            
+            console.log('📋 [AUTH] loadUser: Backend profile data:', JSON.stringify(profile, null, 2));
+            console.log('📋 [AUTH] loadUser: Backend user info:', JSON.stringify(userInfo, null, 2));
+            
+            // Merge backend profile data with Cognito data
+            userData = {
+              ...userData,
+              bio: profile.description || profile.bio || undefined,
+              avatar: profile.profilePicture || profile.avatar || undefined,
+              hideProfile: profile.hideProfile || false,
+              // Update username from backend if available
+              username: profile.username ? `@${profile.username}` : userData.username,
+              // Update premium status based on plan
+              isPremium: (userInfo?.plan && userInfo.plan !== 'AF') || profile.isPremium || false,
+              // Add any additional fields from the backend
+              ...profile,
+            };
+            
+            logger.log('[AUTH] loadUser: Merged user data with backend profile');
+          } else {
+            logger.warn('[AUTH] loadUser: Could not fetch profile from backend:', profileResponse.error);
+            
+            // Fallback to old getUserProfile endpoint
+            try {
+              logger.log('[AUTH] loadUser: Falling back to getUserProfile endpoint...');
+              const profile = await apiClient.getUserProfile(usernameToUse);
+              logger.log('[AUTH] loadUser: Profile fetched from fallback endpoint');
+              
+              // Merge DynamoDB data with Cognito data
+              userData = {
+                ...userData,
+                bio: profile.description || undefined,
+                avatar: profile.profilePicture || undefined,
+              };
+              
+              logger.log('[AUTH] loadUser: Merged user data with fallback profile');
+            } catch (fallbackError: any) {
+              logger.warn('[AUTH] loadUser: Fallback profile fetch also failed');
+              logger.log('[AUTH] loadUser: Continuing with Cognito data only');
+            }
+          }
         } catch (profileError: any) {
-          logger.warn('[AUTH] loadUser: Could not fetch profile from DynamoDB');
+          logger.warn('[AUTH] loadUser: Error fetching profile from backend:', profileError);
           logger.log('[AUTH] loadUser: Continuing with Cognito data only');
           // Continue with Cognito data only - don't fail the login
         }
@@ -393,7 +424,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           console.log('🔄 Token refresh is handled automatically by Amplify');
           console.log('========================================');
           
-          logger.log('[AUTH] login: Cognito tokens logged, loading user data...');
+          logger.log('[AUTH] login: Cognito tokens logged, fetching user profile from backend...');
+          
+          // Fetch user profile from backend using the new endpoint
+          try {
+            const profileResponse = await apiClient.getUserProfileFromBackend();
+            
+            if (profileResponse.success && profileResponse.profile && profileResponse.userInfo) {
+              logger.log('[AUTH] login: User profile fetched from backend successfully');
+              console.log('📋 [AUTH] login: Profile data:', JSON.stringify(profileResponse.profile, null, 2));
+              console.log('📋 [AUTH] login: User info:', JSON.stringify(profileResponse.userInfo, null, 2));
+            } else {
+              logger.warn('[AUTH] login: Could not fetch profile from backend:', profileResponse.error);
+            }
+          } catch (profileError: any) {
+            logger.warn('[AUTH] login: Error fetching profile from backend:', profileError);
+            // Continue with login even if profile fetch fails
+          }
+          
+          logger.log('[AUTH] login: Loading user data...');
           await loadUser();
           logger.log('[AUTH] login: Login successful');
           return;
@@ -571,7 +620,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         logger.log('[AUTH] signup: Account auto-confirmed, signing in user...');
         // Sign in with the Cognito username, not email
         await signIn({ username: cognitoUsername, password });
-        logger.log('[AUTH] signup: User signed in, loading user data...');
+        logger.log('[AUTH] signup: User signed in, fetching user profile from backend...');
+        
+        // Fetch user profile from backend using the new endpoint
+        try {
+          const profileResponse = await apiClient.getUserProfileFromBackend();
+          
+          if (profileResponse.success && profileResponse.profile && profileResponse.userInfo) {
+            logger.log('[AUTH] signup: User profile fetched from backend successfully');
+            console.log('📋 [AUTH] signup: Profile data:', JSON.stringify(profileResponse.profile, null, 2));
+            console.log('📋 [AUTH] signup: User info:', JSON.stringify(profileResponse.userInfo, null, 2));
+          } else {
+            logger.warn('[AUTH] signup: Could not fetch profile from backend:', profileResponse.error);
+          }
+        } catch (profileError: any) {
+          logger.warn('[AUTH] signup: Error fetching profile from backend:', profileError);
+          // Continue with signup even if profile fetch fails
+        }
+        
+        logger.log('[AUTH] signup: Loading user data...');
         await loadUser();
         logger.log('[AUTH] signup: Signup and login completed successfully');
       }
@@ -616,7 +683,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         
         // Sign in the user after successful verification - simple approach like Vite version
         await signIn({ username, password });
-        logger.log('[AUTH] confirmSignUp: User signed in, loading user data...');
+        logger.log('[AUTH] confirmSignUp: User signed in, fetching user profile from backend...');
+        
+        // Fetch user profile from backend using the new endpoint
+        try {
+          const profileResponse = await apiClient.getUserProfileFromBackend();
+          
+          if (profileResponse.success && profileResponse.profile && profileResponse.userInfo) {
+            logger.log('[AUTH] confirmSignUp: User profile fetched from backend successfully');
+            console.log('📋 [AUTH] confirmSignUp: Profile data:', JSON.stringify(profileResponse.profile, null, 2));
+            console.log('📋 [AUTH] confirmSignUp: User info:', JSON.stringify(profileResponse.userInfo, null, 2));
+          } else {
+            logger.warn('[AUTH] confirmSignUp: Could not fetch profile from backend:', profileResponse.error);
+          }
+        } catch (profileError: any) {
+          logger.warn('[AUTH] confirmSignUp: Error fetching profile from backend:', profileError);
+          // Continue with confirmation even if profile fetch fails
+        }
+        
+        logger.log('[AUTH] confirmSignUp: Loading user data...');
         await loadUser();
         logger.log('[AUTH] confirmSignUp: Verification and login completed successfully');
       } else {

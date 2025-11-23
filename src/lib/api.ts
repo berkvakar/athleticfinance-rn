@@ -77,12 +77,23 @@ class ApiClient {
 
   private async getAuthHeaders(): Promise<Record<string, string>> {
     try {
-      console.log('========================================');
-      console.log('🔍 [API] Fetching auth session for API request...');
-      const session = await fetchAuthSession();
+      // Only fetch auth session if user is signed in
+      // This prevents unnecessary token fetching before authentication
+      const session = await fetchAuthSession({ forceRefresh: false });
       
       const idToken = session.tokens?.idToken;
       const accessToken = session.tokens?.accessToken;
+      
+      // If no tokens available, return basic headers (user not signed in)
+      if (!idToken && !accessToken) {
+        logger.log('[API] No auth tokens available - user not signed in');
+        return {
+          'Content-Type': 'application/json',
+        };
+      }
+      
+      console.log('========================================');
+      console.log('🔍 [API] Using auth tokens for API request');
       
       // Log ID Token
       if (idToken) {
@@ -96,8 +107,6 @@ class ApiClient {
         console.log('   User ID:', idTokenPayload.sub);
         console.log('   Email:', idTokenPayload.email);
         console.log('   Username:', idTokenPayload['cognito:username']);
-      } else {
-        console.warn('⚠️ [API] ID Token not available');
       }
       
       // Log Access Token
@@ -111,8 +120,6 @@ class ApiClient {
         console.log(JSON.stringify(accessTokenPayload, null, 2));
         console.log('   Client ID:', accessTokenPayload.client_id);
         console.log('   Username:', accessTokenPayload.username);
-      } else {
-        console.warn('⚠️ [API] Access Token not available');
       }
       
       // Note: Refresh token is not directly accessible in Amplify v6 AuthTokens
@@ -412,6 +419,55 @@ class ApiClient {
       console.error('[API] getRecentPosts: Error stack:', error?.stack);
       // Return empty array instead of throwing - let UI handle gracefully
       return [];
+    }
+  }
+
+  /**
+   * Fetch current user's profile from backend /api/users/profile endpoint
+   * Uses JWT token from Authorization header to identify the user
+   * Returns profile data from DynamoDB along with verified user info from JWT
+   */
+  async getUserProfileFromBackend(): Promise<{
+    success: boolean;
+    profile?: any;
+    userInfo?: {
+      userId: string;
+      email?: string;
+      username?: string;
+      plan?: string;
+    };
+    error?: string;
+    details?: any;
+  }> {
+    logger.log('[API] getUserProfileFromBackend: Fetching profile from /api/users/profile');
+    
+    try {
+      // Ensure we have valid tokens before making the request
+      const session = await fetchAuthSession({ forceRefresh: false });
+      const hasValidToken = !!session.tokens?.idToken;
+      
+      if (!hasValidToken) {
+        logger.warn('[API] getUserProfileFromBackend: No valid auth token available');
+        return {
+          success: false,
+          error: 'No authentication token available',
+        };
+      }
+      
+      // Make request to /api/users/profile with Authorization header
+      // The backend will extract userId from JWT and fetch profile from DynamoDB
+      const response = await this.request<any>('/api/users/profile');
+      
+      logger.log('[API] getUserProfileFromBackend: Profile fetched successfully');
+      logger.debug('[API] getUserProfileFromBackend: Response:', logger.sanitize(response));
+      
+      return response;
+    } catch (error: any) {
+      logger.error('[API] getUserProfileFromBackend: Error fetching profile', error);
+      return {
+        success: false,
+        error: error?.message || 'Failed to fetch user profile',
+      };
     }
   }
 }
