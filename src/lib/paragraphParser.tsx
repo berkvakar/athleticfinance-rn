@@ -79,29 +79,30 @@ const escapeHTML = (str: string = ''): string =>
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 
+const Format = {
+  BOLD: 1,
+  ITALIC: 2,
+  UNDERLINE: 4,
+  STRIKETHROUGH: 8,
+  CODE: 16,
+} as const;
+
 const applyFormatting = (text: string, format: number = 0): string => {
   let formatted = text;
 
-  // Lexical uses bitmasks for inline formatting
-  const FORMAT_BOLD = 1;
-  const FORMAT_ITALIC = 2;
-  const FORMAT_UNDERLINE = 4;
-  const FORMAT_STRIKETHROUGH = 8;
-  const FORMAT_CODE = 16;
-
-  if (format & FORMAT_CODE) {
+  if (format & Format.CODE) {
     formatted = `<code>${formatted}</code>`;
   }
-  if (format & FORMAT_BOLD) {
+  if (format & Format.BOLD) {
     formatted = `<strong>${formatted}</strong>`;
   }
-  if (format & FORMAT_ITALIC) {
+  if (format & Format.ITALIC) {
     formatted = `<em>${formatted}</em>`;
   }
-  if (format & FORMAT_UNDERLINE) {
+  if (format & Format.UNDERLINE) {
     formatted = `<u>${formatted}</u>`;
   }
-  if (format & FORMAT_STRIKETHROUGH) {
+  if (format & Format.STRIKETHROUGH) {
     formatted = `<s>${formatted}</s>`;
   }
 
@@ -168,49 +169,42 @@ export const parseToParagraphBlocks = (content: LexicalRoot): ParagraphBlock[] =
   }
 
   const blocks: ParagraphBlock[] = [];
-  let currentHeadingHtml = '';
-  let currentBodyHtml = '';
+  let currentPageHtml = '';
   let bufferIndex = 0;
 
-  const flushGroup = () => {
-    const combined = `${currentHeadingHtml || ''}${currentBodyHtml || ''}`;
-    if (combined.trim()) {
+  const flushPage = () => {
+    if (currentPageHtml.trim()) {
       blocks.push({
         id: `block-${bufferIndex++}`,
-        html: combined,
+        html: currentPageHtml,
       });
     }
-    currentHeadingHtml = '';
-    currentBodyHtml = '';
+    currentPageHtml = '';
   };
 
   content.root.children.forEach((node) => {
-    const html = renderNodeToHTML(node);
-    if (!html || !html.trim()) {
-      return;
-    }
-
-    const isHeading = node.type === 'heading';
+    // Check if it's a horizontal rule FIRST, before rendering
     const isDivider = node.type === 'horizontalrule';
-    const isCustomBlock = node.type === 'block';
 
-    if (isHeading) {
-      // Finish previous group and start a new heading section
-      flushGroup();
-      currentHeadingHtml = html;
+    if (isDivider) {
+      // Finish current page (all content before this horizontal rule)
+      flushPage();
+      // Don't include the horizontal rule itself in the HTML
       return;
     }
 
-    if (isDivider || isCustomBlock) {
-      currentBodyHtml += html;
-      return;
+    // Render all other content (headings, paragraphs, lists, blocks, etc.)
+    const html = renderNodeToHTML(node);
+    
+    // Add to current page even if empty (to preserve structure)
+    // Empty paragraphs will be filtered by renderNodeToHTML anyway
+    if (html) {
+      currentPageHtml += html;
     }
-
-    // Paragraph/list/etc: append to body
-    currentBodyHtml += html;
   });
 
-  flushGroup();
+  // Flush any remaining content after the last horizontal rule as the final page
+  flushPage();
 
   return blocks;
 };

@@ -2,8 +2,17 @@ import { fetchAuthSession } from 'aws-amplify/auth';
 import Constants from 'expo-constants';
 import { logger } from './logger';
 
-// Get API Gateway URL from app.config.js extra field or process.env
-const API_BASE_URL = Constants.expoConfig?.extra?.apiGatewayUrl || process.env.EXPO_PUBLIC_API_GATEWAY_URL || '';
+// Get API Gateway URL from environment (preferred) or app.config extra
+const API_BASE_URL =
+  process.env.EXPO_PUBLIC_API_GATEWAY_URL ||
+  Constants.expoConfig?.extra?.apiGatewayUrl ||
+  '';
+
+if (!API_BASE_URL) {
+  logger.warn('[API] Missing EXPO_PUBLIC_API_GATEWAY_URL; API requests will fail until it is set.');
+} else {
+  logger.log('[API] Using API base URL:', logger.sanitize(API_BASE_URL));
+}
 
 interface ApiOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
@@ -12,6 +21,23 @@ interface ApiOptions {
 }
 
 class ApiClient {
+  private unauthorizedHandler?: () => Promise<void> | void;
+
+  setUnauthorizedHandler(handler: () => Promise<void> | void) {
+    this.unauthorizedHandler = handler;
+  }
+
+  private async handleUnauthorized() {
+    logger.warn('[API] Received 401 Unauthorized from backend');
+    if (this.unauthorizedHandler) {
+      try {
+        await this.unauthorizedHandler();
+      } catch (handlerError) {
+        logger.error('[API] Unauthorized handler threw an error', handlerError);
+      }
+    }
+  }
+
   /**
    * SECURITY: Sanitize error messages to prevent information disclosure
    * Remove technical details, file paths, stack traces, etc.
@@ -121,11 +147,60 @@ class ApiClient {
     }
   }
 
+  private async requestWithoutAuth<T>(
+    endpoint: string,
+    options: ApiOptions = {}
+  ): Promise<T> {
+    const { method = 'GET', body, headers: customHeaders = {} } = options;
+    
+    if (!API_BASE_URL) {
+      throw new Error('API base URL is not configured. Set EXPO_PUBLIC_API_GATEWAY_URL.');
+    }
+    
+    // No auth headers for unauthenticated requests
+    const headers = {
+      'Content-Type': 'application/json',
+      ...customHeaders,
+    };
+
+    const config: RequestInit = {
+      method,
+      headers,
+    };
+
+    if (body && method !== 'GET') {
+      config.body = JSON.stringify(body);
+    }
+
+    try {
+      const response = await fetch(`${API_BASE_URL}${endpoint}`, config);
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const sanitizedMessage = this.sanitizeErrorMessage(errorData.message || response.statusText);
+        throw new Error(sanitizedMessage);
+      }
+
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        return await response.json();
+      }
+      
+      return {} as T;
+    } catch (error: any) {
+      throw error;
+    }
+  }
+
   private async request<T>(
     endpoint: string,
     options: ApiOptions = {}
   ): Promise<T> {
     const { method = 'GET', body, headers: customHeaders = {} } = options;
+    
+    if (!API_BASE_URL) {
+      throw new Error('API base URL is not configured. Set EXPO_PUBLIC_API_GATEWAY_URL.');
+    }
     
     const authHeaders = await this.getAuthHeaders();
     const headers = {
@@ -148,6 +223,7 @@ class ApiClient {
       if (!response.ok) {
         // Handle 401 Unauthorized
         if (response.status === 401) {
+          await this.handleUnauthorized();
           throw new Error('Unauthorized');
         }
 
@@ -186,6 +262,7 @@ class ApiClient {
             
             if (!response.ok) {
               if (response.status === 401) {
+                await this.handleUnauthorized();
                 throw new Error('Unauthorized');
               }
               const errorData = await response.json().catch(() => ({}));
@@ -249,57 +326,47 @@ class ApiClient {
     return this.request<any[]>(`/users/${userId}/comments`);
   }
 
-  async checkEmailExists(email: string): Promise<{ exists: boolean }> {
-    // Don't require auth headers for this endpoint
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    };
-    
+  async getCurrentUser(): Promise<{
+    sub: string;
+    email?: string;
+    username?: string;
+    plan?: string;
+  }> {
+    logger.log('[API] getCurrentUser: Fetching /api/me');
+    return this.request('/api/me');
+  }
+
+  async checkEmailExists(email: string): Promise<{ exists?: boolean; available?: boolean; success?: boolean; message?: string }> {
     logger.log('[API] checkEmailExists: Checking email availability');
-    
-    if (!API_BASE_URL) {
-      logger.error('[API] checkEmailExists: API_BASE_URL is not configured');
-      throw new Error('API Gateway URL is not configured. Please set EXPO_PUBLIC_API_GATEWAY_URL environment variable.');
+    try {
+      return await this.requestWithoutAuth<{ exists?: boolean; available?: boolean; success?: boolean; message?: string }>(`/api/users?email=${encodeURIComponent(email)}`);
+    } catch (error) {
+      logger.error('[API] checkEmailExists: Error while checking email', error);
+      throw error;
     }
-    
-    const response = await fetch(`${API_BASE_URL}/users/check-email?email=${encodeURIComponent(email)}`, {
-      method: 'GET',
-      headers,
-    });
+  }
 
-    logger.log('[API] checkEmailExists: Response received, status:', response.status);
-
-    if (!response.ok) {
-      const contentType = response.headers.get('content-type');
-      let errorData: any = {};
-      
-      if (contentType && contentType.includes('application/json')) {
-        errorData = await response.json().catch(() => ({}));
-      } else {
-        const text = await response.text();
-        errorData = { message: text || `API Error: ${response.statusText}` };
-      }
-      
-      throw new Error(errorData.message || `API Error: ${response.statusText}`);
-    }
-
-    // Check content type before parsing
-    const contentType = response.headers.get('content-type');
-    
-    if (contentType && contentType.includes('application/json')) {
-      return await response.json();
-    } else {
-      // Handle non-JSON response
-      const text = await response.text();
-      logger.warn('[API] checkEmailExists: Non-JSON response received');
-      
-      try {
-        return JSON.parse(text);
-      } catch (e) {
-        // If not JSON, assume email doesn't exist (for development/testing)
-        logger.warn('[API] checkEmailExists: Could not parse response as JSON');
-        return { exists: false };
-      }
+  async registerUserForVerification(userData: {
+    userId: string;
+    username: string;
+  }): Promise<{ success: boolean; message?: string }> {
+    logger.log('[API] registerUserForVerification: Sending user info to backend for verification timer');
+    try {
+      // This call doesn't require authentication since user isn't signed in yet
+      // The backend will forward to AWS Lambda to start the 5-minute timer
+      return await this.requestWithoutAuth<{ success: boolean; message?: string }>(
+        '/api/users/verify',
+        {
+          method: 'POST',
+          body: {
+            userId: userData.userId,
+            username: userData.username,
+          },
+        }
+      );
+    } catch (error) {
+      logger.error('[API] registerUserForVerification: Error sending user info', error);
+      throw error;
     }
   }
 
@@ -307,66 +374,44 @@ class ApiClient {
     logger.log('[API] getRecentPosts: Fetching recent posts');
     
     try {
-      // Try with auth headers first (endpoint may require authentication)
-      const authHeaders = await this.getAuthHeaders();
+      // Ensure we have valid tokens before making the request
+      const session = await fetchAuthSession({ forceRefresh: false });
+      const hasValidToken = !!session.tokens?.idToken;
       
-      if (!API_BASE_URL) {
-        logger.error('[API] getRecentPosts: API_BASE_URL is not configured');
-        throw new Error('API Gateway URL is not configured. Please set EXPO_PUBLIC_API_GATEWAY_URL environment variable.');
-      }
-      
-      const response = await fetch(`${API_BASE_URL}/api/posts`, {
-        method: 'GET',
-        headers: authHeaders,
-      });
-
-      logger.log('[API] getRecentPosts: Response received, status:', response.status);
-
-      if (!response.ok) {
-        const contentType = response.headers.get('content-type');
-        let errorData: any = {};
-        
-        if (contentType && contentType.includes('application/json')) {
-          errorData = await response.json().catch(() => ({}));
-        } else {
-          const text = await response.text();
-          errorData = { message: text || `API Error: ${response.statusText}` };
-        }
-        
-        throw new Error(errorData.message || `API Error: ${response.statusText}`);
-      }
-
-      const contentType = response.headers.get('content-type');
-      
-      if (contentType && contentType.includes('application/json')) {
-        const data = await response.json();
-        
-        // Handle different response formats:
-        // Format 1: { success: true, posts: [...] }
-        // Format 2: { success: true, post: {...} } (single post)
-        // Format 3: [...] (direct array)
-        if (Array.isArray(data)) {
-          logger.log('[API] getRecentPosts: Received array of posts, count:', data.length);
-          return data;
-        } else if (data.success) {
-          if (data.posts && Array.isArray(data.posts)) {
-            logger.log('[API] getRecentPosts: Received posts array, count:', data.posts.length);
-            return data.posts;
-          } else if (data.post) {
-            logger.log('[API] getRecentPosts: Received single post');
-            return [data.post];
-          }
-        }
-        
-        logger.warn('[API] getRecentPosts: Unexpected response format');
-        return [];
-      } else {
-        logger.warn('[API] getRecentPosts: Non-JSON response received');
+      if (!hasValidToken) {
+        logger.warn('[API] getRecentPosts: No valid auth token available yet');
+        // Return empty array instead of throwing - UI will handle gracefully
         return [];
       }
+      
+      const data = await this.request<any>(`/api/posts?depth=1`);
+      logger.log('[API] getRecentPosts: Response received and parsed');
+      
+      if (Array.isArray(data)) {
+        logger.log('[API] getRecentPosts: Received array of posts, count:', data.length);
+        return data;
+      }
+        
+      if (data?.success) {
+        if (Array.isArray(data.posts)) {
+          logger.log('[API] getRecentPosts: Received posts array, count:', data.posts.length);
+          return data.posts;
+        }
+        if (data.post) {
+          logger.log('[API] getRecentPosts: Received single post');
+          return [data.post];
+        }
+      }
+      
+      logger.warn('[API] getRecentPosts: Unexpected response format');
+      return [];
     } catch (error: any) {
       logger.error('[API] getRecentPosts: Error fetching posts', error);
-      throw error;
+      console.error('[API] getRecentPosts: Full error details:', JSON.stringify(error, null, 2));
+      console.error('[API] getRecentPosts: Error message:', error?.message);
+      console.error('[API] getRecentPosts: Error stack:', error?.stack);
+      // Return empty array instead of throwing - let UI handle gracefully
+      return [];
     }
   }
 }

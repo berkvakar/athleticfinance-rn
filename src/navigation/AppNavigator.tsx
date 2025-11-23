@@ -11,6 +11,7 @@ import AFPlusScreen from '../screens/AFPlusScreen';
 import HomeScreen from '../screens/HomeScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import SettingsScreen from '../screens/SettingsScreen';
+import ProfileEditScreen from '../screens/ProfileEditScreen';
 import ArticleDetailScreen from '../screens/ArticleDetailScreen';
 import { View, Text, StyleSheet, Image } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -27,6 +28,7 @@ export type RootStackParamList = {
   Welcome: undefined;
   MainTabs: undefined;
   Settings: undefined;
+  ProfileEdit: undefined;
   ArticleDetail: {
     article: {
       id: number;
@@ -163,6 +165,14 @@ export default function AppNavigator() {
             <Stack.Screen 
               name="Settings" 
               component={SettingsScreen}
+              options={{
+                headerShown: false,
+                animation: 'slide_from_right',
+              }}
+            />
+            <Stack.Screen 
+              name="ProfileEdit" 
+              component={ProfileEditScreen}
               options={{
                 headerShown: false,
                 animation: 'slide_from_right',

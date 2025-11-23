@@ -7,9 +7,10 @@ interface LayoutProps {
   children: ReactNode;
   date?: Date;
   headerActions?: ReactNode;
+  leftHeaderActions?: ReactNode;
 }
 
-const Layout = memo(function Layout({ children, date, headerActions }: LayoutProps) {
+const Layout = memo(function Layout({ children, date, headerActions, leftHeaderActions }: LayoutProps) {
   const insets = useSafeAreaInsets();
 
   return (
@@ -18,8 +19,20 @@ const Layout = memo(function Layout({ children, date, headerActions }: LayoutPro
       <View style={styles.header}>
         <View style={styles.headerContent}>
           <View style={styles.logoContainer}>
-            <Image source={afLogo} style={styles.logo} resizeMode="contain" />
+            <Image 
+              source={afLogo} 
+              style={styles.logo} 
+              resizeMode="contain"
+              // Ensure high quality rendering
+              defaultSource={afLogo}
+              fadeDuration={0}
+            />
           </View>
+          {leftHeaderActions && (
+            <View style={styles.leftHeaderActions}>
+              {leftHeaderActions}
+            </View>
+          )}
           <View style={styles.headerActions}>
             {headerActions}
           </View>
@@ -47,7 +60,7 @@ const styles = StyleSheet.create({
   headerContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'flex-end',
+    justifyContent: 'space-between',
     paddingHorizontal: 12,
     paddingVertical: 8,
     minHeight: 50,
@@ -64,12 +77,22 @@ const styles = StyleSheet.create({
   logo: {
     width: 96,
     height: 96,
+    // Ensure sharp rendering on all devices
+    overflow: 'hidden',
+  },
+  leftHeaderActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-start',
+    alignItems: 'center',
+    zIndex: 1,
+    flex: 1,
   },
   headerActions: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
     alignItems: 'center',
     zIndex: 1,
+    flex: 1,
   },
   content: {
     flex: 1,

@@ -27,7 +27,7 @@ interface AuthContextType {
   user: User | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  signup: (email: string, password: string, name: string, username: string) => Promise<{ requiresVerification: boolean; username: string; email: string } | void>;
+  signup: (email: string, password: string, name: string, username: string) => Promise<{ requiresVerification: boolean; username: string; email: string; userId: string } | void>;
   confirmSignUp: (username: string, confirmationCode: string, password: string, email?: string) => Promise<void>;
   logout: () => Promise<void>;
   upgradeToPremium: () => Promise<void>;
@@ -532,17 +532,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         options: {
           userAttributes: {
             email,
-            name,
-            // Custom attributes removed - will be added later
+            name, // Combined firstName + surname
+            // Custom attribute: plan set to 'AF' for all initial signups
+            'custom:plan': 'AF',
           },
         },
       });
-      logger.log('[AUTH] signup: signUp() completed');
+      
+      // userId should always be present from signUp, but handle undefined case
+      if (!userId) {
+        throw new Error('Failed to get user ID from signup');
+      }
+      
+      logger.log('[AUTH] signup: signUp() completed, userId:', userId);
+
+      // Send username and userId to backend to start 5-minute timer
+      logger.log('[AUTH] signup: Sending user info to backend to start verification timer...');
+      try {
+        await apiClient.registerUserForVerification({
+          userId,
+          username: cognitoUsername,
+        });
+        logger.log('[AUTH] signup: User info sent to backend successfully');
+      } catch (backendError: any) {
+        logger.error('[AUTH] signup: Error sending user info to backend:', backendError);
+        // Don't fail the signup if backend call fails - user is already in Cognito
+        // Log the error but continue with the flow
+      }
 
       // If email verification is required, return verification info
       if (nextStep.signUpStep === 'CONFIRM_SIGN_UP') {
         logger.log('[AUTH] signup: Email verification required');
-        return { requiresVerification: true, username: cognitoUsername, email };
+        return { requiresVerification: true, username: cognitoUsername, email, userId };
       }
 
       // If auto-confirmed, sign in the user
@@ -581,6 +602,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         confirmationCode,
       });
       logger.log('[AUTH] confirmSignUp: confirmSignUp() completed');
+      logger.log('[AUTH] confirmSignUp: isSignUpComplete:', isSignUpComplete);
 
       if (isSignUpComplete) {
         verificationSucceeded = true;
@@ -612,10 +634,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       // Only throw errors if verification itself failed
       logger.error('[AUTH] confirmSignUp: Error during verification:', error?.message || error);
+      logger.error('[AUTH] confirmSignUp: Error name:', error?.name);
+      logger.error('[AUTH] confirmSignUp: Full error object:', JSON.stringify(error, null, 2));
       
       // Provide better error messages
       let errorMessage = 'Failed to verify account';
       const errorMsg = error?.message || error?.toString() || '';
+      const errorName = error?.name || '';
+      
+      // Check for user deletion (by cleanup Lambda) - UserNotFoundException
+      if (errorName === 'UserNotFoundException' || 
+          errorMsg.includes('UserNotFoundException') ||
+          errorMsg.includes('User does not exist') ||
+          errorMsg.includes('not found') ||
+          errorMsg.includes('does not exist')) {
+        logger.log('[AUTH] confirmSignUp: User not found - likely deleted by cleanup Lambda');
+        throw new Error('USER_NOT_FOUND');
+      }
       
       if (errorMsg.includes('Invalid verification code') || 
           errorMsg.includes('CodeMismatchException') ||

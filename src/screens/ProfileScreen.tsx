@@ -273,7 +273,14 @@ export default function ProfileScreen() {
             activeOpacity={0.8}
           >
             {profileImage ? (
-              <Image source={{ uri: profileImage }} style={styles.avatar} />
+              <Image 
+                source={{ uri: profileImage }} 
+                style={styles.avatar}
+                resizeMode="cover"
+                // Optimize quality
+                defaultSource={require('../../assets/af-logo.png')}
+                fadeDuration={200}
+              />
             ) : (
               <View style={styles.avatar}>
                 <Text style={styles.avatarText}>
@@ -301,49 +308,24 @@ export default function ProfileScreen() {
               <Text style={styles.memberNumber}>Member #{memberNumber}</Text>
             )}
             
-            {/* Bio Section - Moved here */}
+            {/* Bio Section */}
             <View style={styles.bioSectionInline}>
-              {isEditingBio ? (
-                <View style={styles.bioEditContainer}>
-                  <TextInput
-                    style={styles.bioInput}
-                    value={bio}
-                    onChangeText={setBio}
-                    placeholder="Add a bio..."
-                    multiline
-                    maxLength={150}
-                    autoFocus
-                  />
-                  <View style={styles.bioActions}>
-                    <TouchableOpacity
-                      style={styles.bioButton}
-                      onPress={() => setIsEditingBio(false)}
-                    >
-                      <Text style={styles.bioButtonText}>Cancel</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.bioButton, styles.bioButtonPrimary]}
-                      onPress={handleSaveBio}
-                    >
-                      <Text style={[styles.bioButtonText, styles.bioButtonTextPrimary]}>Save</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
+              {bio ? (
+                <Text style={styles.bioText}>{bio}</Text>
               ) : (
-                <TouchableOpacity
-                  style={styles.bioContainer}
-                  onPress={() => setIsEditingBio(true)}
-                  activeOpacity={0.7}
-                >
-                  {bio ? (
-                    <Text style={styles.bioText}>{bio}</Text>
-                  ) : (
-                    <Text style={styles.bioPlaceholder}>Add a bio...</Text>
-                  )}
-                  <MaterialIcons name="edit" size={16} color="#999" style={styles.bioEditIcon} />
-                </TouchableOpacity>
+                <Text style={styles.bioPlaceholder}>No bio yet</Text>
               )}
             </View>
+
+            {/* Edit Profile Button */}
+            <TouchableOpacity 
+              style={styles.editProfileButton}
+              activeOpacity={0.8}
+              onPress={() => navigation.navigate('ProfileEdit')}
+            >
+              <MaterialIcons name="edit" size={16} color="#6366F1" />
+              <Text style={styles.editProfileButtonText}>Edit Profile</Text>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -500,6 +482,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 2,
     borderColor: '#E5E5E5',
+    // Ensure sharp image rendering
+    overflow: 'hidden',
   },
   avatarText: {
     fontSize: 36,
@@ -543,8 +527,27 @@ const styles = StyleSheet.create({
   },
   bioSectionInline: {
     marginTop: 12,
-    marginBottom: 24,
     width: '100%',
+  },
+  editProfileButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: '#EEF2FF',
+    borderWidth: 1.5,
+    borderColor: '#C7D2FE',
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    marginTop: 12,
+    marginBottom: 24,
+  },
+  editProfileButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#6366F1',
+    letterSpacing: 0.2,
   },
   bioSection: {
     paddingHorizontal: 16,

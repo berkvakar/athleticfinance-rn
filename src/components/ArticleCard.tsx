@@ -63,6 +63,9 @@ export default function ArticleCard({
                 source={{ uri: imageUrl }}
                 style={styles.image}
                 resizeMode="cover"
+                // Optimize for quality
+                defaultSource={require('../../assets/af-logo.png')}
+                fadeDuration={200}
               />
             ) : (
               <View style={styles.imagePlaceholder}>
@@ -133,6 +136,8 @@ const styles = StyleSheet.create({
   image: {
     width: '100%',
     height: '100%',
+    // Ensure quality rendering
+    backgroundColor: '#F5F5F5',
   },
   imagePlaceholder: {
     width: '100%',

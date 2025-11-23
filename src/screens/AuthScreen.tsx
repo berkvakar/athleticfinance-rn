@@ -50,6 +50,7 @@ export default function AuthScreen() {
   const [verificationCode, setVerificationCode] = useState(['', '', '', '', '', '']);
   const [isVerifying, setIsVerifying] = useState(false);
   const [verificationError, setVerificationError] = useState<string | null>(null);
+  const [generalError, setGeneralError] = useState<string | null>(null);
   const verificationInputRefs = useRef<(TextInput | null)[]>([]);
   
   // Redirect will happen automatically via AppNavigator when user state updates
@@ -200,9 +201,13 @@ export default function AuthScreen() {
       const emailCheck = await apiClient.checkEmailExists(formData.email);
       console.log('[AUTH] validateEmailAndProceed: Email check result:', emailCheck);
       
-      if (emailCheck.exists) {
+      // Handle both old format {success: boolean} and new format {exists: boolean, available: boolean}
+      const emailExists = (emailCheck as any).exists === true || (emailCheck as any).success === true;
+      const emailAvailable = (emailCheck as any).available === true || (emailCheck as any).success === false;
+      
+      if (emailExists || !emailAvailable) {
         console.log('[AUTH] validateEmailAndProceed: Email exists, blocking progression');
-        setEmailError('This email is already registered. Please use a different email or sign in.');
+        setEmailError('Email already exists. Please use a different email or sign in.');
         setIsCheckingEmail(false);
         setIsValidatingEmail(false);
         return; // Don't proceed to next slide
@@ -251,6 +256,10 @@ export default function AuthScreen() {
       if (currentSlide < 7) {
         if (currentSlide < 4) {
           // Welcome and demo slides - can always proceed
+          // Clear general error when leaving first slide
+          if (currentSlide === 0) {
+            setGeneralError(null);
+          }
           setCurrentSlide(currentSlide + 1);
         } else if (currentSlide === 4 && formData.email && isEmailValid && formData.password && isPasswordValid) {
           // Email & Password slide - check email availability before proceeding
@@ -321,12 +330,16 @@ export default function AuthScreen() {
       
       try {
         const emailCheck = await apiClient.checkEmailExists(formData.email);
-        console.log('[AUTH] handleSubmit: ✅ Email check completed!');
+        console.log('[AUTH] handleSubmit: Email check completed!');
         
-        if (emailCheck.exists) {
+        // Handle both old format {success: boolean} and new format {exists: boolean, available: boolean}
+        const emailExists = (emailCheck as any).exists === true || (emailCheck as any).success === true;
+        const emailAvailable = (emailCheck as any).available === true || (emailCheck as any).success === false;
+        
+        if (emailExists || !emailAvailable) {
           console.error('[AUTH] handleSubmit: Email exists - BLOCKING signup');
           setCurrentSlide(4);
-          setEmailError('This email is already registered. Please use a different email or sign in.');
+          setEmailError('Email already exists. Please use a different email or sign in.');
           setIsCheckingEmail(false);
           setIsLoading(false);
           return;
@@ -506,11 +519,43 @@ export default function AuthScreen() {
       logger.log('[AUTH_SCREEN] handleVerificationSubmit: Navigation will happen automatically via AppNavigator when user state updates');
     } catch (error: any) {
       logger.error('[AUTH_SCREEN] handleVerificationSubmit: Error during verification');
-      // Clear code on error
+      
+      const errorMessage = error.message || '';
+      
+      // Check if user was deleted (by cleanup Lambda after 5 minutes)
+      if (errorMessage === 'USER_NOT_FOUND' ||
+          errorMessage.includes('UserNotFoundException') || 
+          errorMessage.includes('User does not exist') ||
+          errorMessage.includes('not found') ||
+          errorMessage.includes('does not exist')) {
+        
+        logger.log('[AUTH_SCREEN] handleVerificationSubmit: User not found - likely deleted by cleanup');
+        
+        // Reset to first screen with error message
+        setCurrentSlide(0);
+        setGeneralError('Verification time limit exceeded. Please sign up again.');
+        
+        // Clear all verification data
+        setVerificationData(null);
+        setVerificationCode(['', '', '', '', '', '']);
+        
+        // Clear form data
+        setFormData({
+          firstName: '',
+          surname: '',
+          email: '',
+          password: '',
+          username: '',
+        });
+        
+        setIsVerifying(false);
+        return;
+      }
+      
+      // Handle other verification errors
       setVerificationCode(['', '', '', '', '', '']);
       verificationInputRefs.current[0]?.focus();
-      const errorMessage = error.message || 'Invalid verification code. Please try again.';
-      setVerificationError(errorMessage);
+      setVerificationError(errorMessage || 'Invalid verification code. Please try again.');
     } finally {
       logger.log('[AUTH_SCREEN] handleVerificationSubmit: Verification process completed');
       setIsVerifying(false);
@@ -568,6 +613,15 @@ export default function AuthScreen() {
           <View style={styles.slideContainer}>
             <Image source={afLogo} style={styles.welcomeLogo} resizeMode="contain" />
             <Text style={styles.welcomeTitle}>Sports Finance Simplified.</Text>
+            
+            {/* Show general error message (e.g., verification timeout) */}
+            {generalError && (
+              <View style={styles.generalErrorContainer}>
+                <MaterialIcons name="error-outline" size={24} color="#EF4444" />
+                <Text style={styles.generalErrorText}>{generalError}</Text>
+              </View>
+            )}
+            
             <View style={styles.swipeHintContainer}>
               <Text style={styles.swipeHintText}>Swipe up to continue</Text>
             </View>
@@ -618,6 +672,8 @@ export default function AuthScreen() {
                  onChangeText={(text) => {
                    setFormData({ ...formData, email: text });
                    setEmailError(null);
+                   setIsCheckingEmail(false);
+                   setIsValidatingEmail(false);
                  }}
                  keyboardType="email-address"
                  autoCapitalize="none"
@@ -648,7 +704,7 @@ export default function AuthScreen() {
               )}
             </View>
 
-            {formData.email && isEmailValid && formData.password && isPasswordValid && !isCheckingEmail && !emailError && (
+            {formData.email && isEmailValid && formData.password && isPasswordValid && !isCheckingEmail && !isValidatingEmail && !emailError && (
               <View style={styles.swipeHintContainer}>
                 <Text style={styles.swipeHintText}>Swipe up when ready</Text>
               </View>
@@ -1022,6 +1078,22 @@ const styles = StyleSheet.create({
   swipeHintText: {
     fontSize: 14,
     color: '#999',
+  },
+  generalErrorContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF2F2',
+    borderRadius: 8,
+    padding: 16,
+    marginTop: 20,
+    marginHorizontal: 20,
+    gap: 12,
+  },
+  generalErrorText: {
+    flex: 1,
+    fontSize: 14,
+    color: '#EF4444',
+    fontWeight: '500',
   },
   emailText: {
     fontSize: 16,

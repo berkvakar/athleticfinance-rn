@@ -35,15 +35,18 @@ interface Article {
 
 export default function HomeScreen() {
   const navigation = useNavigation<NavigationProp>();
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const [articles, setArticles] = useState<Article[]>([]);
   const [loading, setLoading] = useState(false); // Start as false since there's no async work initially
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
 
   useEffect(() => {
-    loadArticles();
-  }, []);
+    // Only load articles after auth is done loading and user is authenticated
+    if (!authLoading && user) {
+      loadArticles();
+    }
+  }, [authLoading, user]);
 
   const loadArticles = async () => {
     try {

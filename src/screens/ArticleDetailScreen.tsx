@@ -139,6 +139,15 @@ export default function ArticleDetailScreen({ route }: ArticleDetailScreenProps)
 
   return (
     <Layout
+      leftHeaderActions={
+        <TouchableOpacity
+          onPress={handleBack}
+          style={styles.headerButton}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
+          <MaterialIcons name="arrow-back" size={24} color="#000" />
+        </TouchableOpacity>
+      }
       headerActions={
         <View style={styles.headerActions}>
           <TouchableOpacity
@@ -159,14 +168,6 @@ export default function ArticleDetailScreen({ route }: ArticleDetailScreenProps)
       }
     >
       <View style={styles.container}>
-        {/* Back Button */}
-        <TouchableOpacity
-          onPress={handleBack}
-          style={styles.backButton}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-        >
-          <MaterialIcons name="arrow-back" size={24} color="#000" />
-        </TouchableOpacity>
 
         {/* Page Indicator */}
         {totalPages > 1 && (
@@ -220,20 +221,6 @@ const styles = StyleSheet.create({
   headerButton: {
     padding: 4,
   },
-  backButton: {
-    position: 'absolute',
-    top: 16,
-    left: 16,
-    zIndex: 10,
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
-    borderRadius: 20,
-    padding: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
   pageIndicator: {
     position: 'absolute',
     top: 16,
@@ -256,9 +243,9 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
   page: {
-    height: SCREEN_HEIGHT -100,
+    height: SCREEN_HEIGHT,
     width: SCREEN_WIDTH,
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
     alignItems: 'center',
   },
   titlePage: {
