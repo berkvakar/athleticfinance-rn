@@ -104,24 +104,21 @@ export default function ProfileEditScreen() {
                 <TextInput
                   style={[styles.input, styles.bioInput]}
                   value={bio}
-                  onChangeText={setBio}
+                  onChangeText={(text) => {
+                    if (text.length <= 100) {
+                      setBio(text);
+                    }
+                  }}
                   placeholder="Tell us about yourself..."
                   placeholderTextColor="#9CA3AF"
                   multiline
                   numberOfLines={4}
                   textAlignVertical="top"
+                  maxLength={100}
                 />
               </View>
-              <Text style={styles.characterCount}>{bio.length}/150</Text>
+              <Text style={styles.characterCount}>{bio.length}/100</Text>
             </View>
-          </View>
-
-          {/* Info Card */}
-          <View style={styles.infoCard}>
-            <MaterialIcons name="info-outline" size={20} color="#6366F1" />
-            <Text style={styles.infoText}>
-              Your profile information is visible to all Athletic Finance users.
-            </Text>
           </View>
 
           {/* Save Button */}
@@ -185,7 +182,7 @@ const styles = StyleSheet.create({
     width: 120,
     height: 120,
     borderRadius: 60,
-    backgroundColor: '#6366F1',
+    backgroundColor: '#374151',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 4,
@@ -208,12 +205,12 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#6366F1',
+    backgroundColor: '#000',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 3,
     borderColor: '#fff',
-    shadowColor: '#6366F1',
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.4,
     shadowRadius: 6,
@@ -226,7 +223,7 @@ const styles = StyleSheet.create({
   changePhotoText: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#6366F1',
+    color: '#000',
   },
   formSection: {
     marginBottom: 24,
@@ -296,28 +293,13 @@ const styles = StyleSheet.create({
     marginLeft: 4,
     textAlign: 'right',
   },
-  infoCard: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: '#EEF2FF',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 24,
-    gap: 12,
-  },
-  infoText: {
-    flex: 1,
-    fontSize: 14,
-    color: '#4B5563',
-    lineHeight: 20,
-  },
   saveButton: {
-    backgroundColor: '#6366F1',
+    backgroundColor: '#000',
     borderRadius: 12,
     paddingVertical: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#6366F1',
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,

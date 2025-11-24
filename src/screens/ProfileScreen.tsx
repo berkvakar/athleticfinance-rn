@@ -37,10 +37,11 @@ type TabType = 'comments' | 'saved' | 'statistics';
 
 export default function ProfileScreen() {
   const navigation = useNavigation<NavigationProp>();
-  const { user, savedItems } = useAuth();
+  const { user, savedItems, loading: authLoading, refreshProfile } = useAuth();
   const [profileImage, setProfileImage] = useState<string | null>(null);
   const [bio, setBio] = useState(user?.bio || '');
   const [memberNumber, setMemberNumber] = useState<string>('');
+  const [profileUsername, setProfileUsername] = useState<string | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [loading, setLoading] = useState(true);
   const [isEditingBio, setIsEditingBio] = useState(false);
@@ -54,10 +55,19 @@ export default function ProfileScreen() {
   const indicatorPosition = useRef(new Animated.Value(0)).current;
   const screenWidth = Dimensions.get('window').width;
   const tabWidth = screenWidth / 3;
+  const hasLoadedProfile = useRef(false);
 
   useEffect(() => {
-    loadProfileData();
-  }, [user]);
+    // Wait for auth to finish loading before trying to load profile
+    // Only load once when component mounts
+    if (!authLoading && user && !hasLoadedProfile.current) {
+      hasLoadedProfile.current = true;
+      loadProfileData();
+    } else if (!authLoading && !user) {
+      // User not authenticated, stop loading
+      setLoading(false);
+    }
+  }, [authLoading, user?.id]); // Only depend on user.id, not the entire user object
 
   // Sync bio with user context when it changes
   useEffect(() => {
@@ -67,25 +77,84 @@ export default function ProfileScreen() {
   }, [user?.bio]);
 
   const loadProfileData = async () => {
-    if (!user?.username) return;
+    // Double check user exists and is authenticated
+    if (!user) {
+      setLoading(false);
+      return;
+    }
     
     try {
       setLoading(true);
       
-      // Fetch profile from DynamoDB
+      // Fetch fresh profile data from backend
       try {
-        console.log('[PROFILE] Loading profile data for username:', user.username);
-        const profileData = await apiClient.getUserProfile(user.username);
-        console.log('[PROFILE] Profile data loaded:', profileData);
+        console.log('[PROFILE] Refreshing profile data from backend...');
+        await refreshProfile();
+        console.log('[PROFILE] Profile data refreshed');
         
-        // Update state with DynamoDB data
-        setBio(profileData.description || '');
-        setMemberNumber(profileData.userNumber?.toString() || '');
-        setProfileImage(profileData.profilePicture || null);
+        // Use the updated user data from context after refresh
+        const profileData = await apiClient.getUserProfile();
+        console.log('[PROFILE] Profile data loaded:', JSON.stringify(profileData, null, 2));
         
-        console.log('[PROFILE] Profile state updated');
+        // Update state with profile data from backend
+        // Handle different response structures (including double nesting)
+        if (profileData) {
+          let profile: any = profileData;
+          
+          // Handle double nesting: profileData.profile.profile
+          if (profileData.profile?.profile) {
+            profile = profileData.profile.profile;
+          } else if (profileData.profile) {
+            profile = profileData.profile;
+          }
+          
+          // Update all profile fields
+          if (profile.description !== undefined) {
+            setBio(profile.description || '');
+          }
+          
+          // Check for userNumber in various possible field names
+          const userNumber = profile.userNumber ?? profile.memberNumber ?? profile.user_number;
+          if (userNumber !== undefined && userNumber !== null) {
+            setMemberNumber(userNumber.toString());
+          }
+          
+          // Check for profile picture in various field names
+          const profilePic = profile.profilePicture ?? profile.profilePicUrl ?? profile.avatar;
+          if (profilePic !== undefined && profilePic !== null && profilePic !== '') {
+            setProfileImage(profilePic);
+          }
+          
+          if (profile.username !== undefined) {
+            // Store username with @ prefix if not already present
+            const username = profile.username.startsWith('@') 
+              ? profile.username 
+              : `@${profile.username}`;
+            setProfileUsername(username);
+          }
+          
+          console.log('[PROFILE] Profile state updated:', {
+            username: profile.username || profileUsername,
+            bio: profile.description || bio,
+            userNumber: userNumber,
+            memberNumber: memberNumber,
+            profilePic: profilePic,
+            hasProfileImage: !!profilePic || !!profileImage,
+            fullProfile: profile
+          });
+        }
       } catch (error: any) {
-        console.warn('[PROFILE] Could not load profile from DynamoDB:', error.message);
+        console.warn('[PROFILE] Could not load profile from backend:', error?.message || error);
+        console.warn('[PROFILE] Error details:', error);
+        
+        // Check if error is due to missing authentication
+        if (error?.message?.includes('No authentication token') || 
+            error?.message?.includes('Could not extract userId')) {
+          console.log('[PROFILE] Authentication not ready yet, will retry when token is available');
+          // Don't set loading to false - let it retry when user/auth state updates
+          return;
+        }
+        
         // Use data from AuthContext if available
         setBio(user.bio || '');
         setProfileImage(user.avatar || null);
@@ -238,7 +307,8 @@ export default function ProfileScreen() {
     </View>
   );
 
-  if (loading) {
+  // Show loading if auth is still loading or profile is loading
+  if (authLoading || loading) {
     return (
       <Layout>
         <View style={styles.loadingContainer}>
@@ -246,6 +316,11 @@ export default function ProfileScreen() {
         </View>
       </Layout>
     );
+  }
+
+  // If no user, don't render profile screen (should be handled by navigation)
+  if (!user) {
+    return null;
   }
 
   return (
@@ -296,7 +371,9 @@ export default function ProfileScreen() {
           {/* Profile Info */}
           <View style={styles.profileInfo}>
             <View style={styles.nameRow}>
-              <Text style={styles.username}>{user?.username || user?.email}</Text>
+              <Text style={styles.username}>
+                {profileUsername || user?.username || user?.email}
+              </Text>
               {user?.isPremium && (
                 <View style={styles.premiumBadge}>
                   <MaterialIcons name="workspace-premium" size={14} color="#FFD700" />
@@ -304,9 +381,9 @@ export default function ProfileScreen() {
                 </View>
               )}
             </View>
-            {memberNumber && (
-              <Text style={styles.memberNumber}>Member #{memberNumber}</Text>
-            )}
+            <Text style={styles.memberNumber}>
+              {memberNumber ? `Member #${memberNumber}` : 'Member #--'}
+            </Text>
             
             {/* Bio Section */}
             <View style={styles.bioSectionInline}>

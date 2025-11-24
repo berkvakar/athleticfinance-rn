@@ -35,6 +35,7 @@ interface AuthContextType {
   saveItem: (item: SavedItem) => void;
   unsaveItem: (id: string) => void;
   updateProfile: (updates: Partial<User>) => Promise<void>;
+  refreshProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -169,71 +170,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         logger.log('[AUTH] loadUser: User authenticated');
         
         // Base user data from Cognito
-        let userData: User = {
+        const userData: User = {
           id: currentUser.userId,
           email: email,
           name: attributes.name || '',
           username: usernameToUse,
-          isPremium: false, // Will be set from backend profile data
+          isPremium: false, // Will be updated when profile is fetched
         };
         
-        // Try to fetch additional profile data from backend /api/users/profile
-        try {
-          logger.log('[AUTH] loadUser: Fetching profile from backend /api/users/profile...');
-          const profileResponse = await apiClient.getUserProfileFromBackend();
-          
-          if (profileResponse.success && profileResponse.profile) {
-            logger.log('[AUTH] loadUser: Profile fetched from backend successfully');
-            const profile = profileResponse.profile;
-            const userInfo = profileResponse.userInfo;
-            
-            console.log('📋 [AUTH] loadUser: Backend profile data:', JSON.stringify(profile, null, 2));
-            console.log('📋 [AUTH] loadUser: Backend user info:', JSON.stringify(userInfo, null, 2));
-            
-            // Merge backend profile data with Cognito data
-            userData = {
-              ...userData,
-              bio: profile.description || profile.bio || undefined,
-              avatar: profile.profilePicture || profile.avatar || undefined,
-              hideProfile: profile.hideProfile || false,
-              // Update username from backend if available
-              username: profile.username ? `@${profile.username}` : userData.username,
-              // Update premium status based on plan
-              isPremium: (userInfo?.plan && userInfo.plan !== 'AF') || profile.isPremium || false,
-              // Add any additional fields from the backend
-              ...profile,
-            };
-            
-            logger.log('[AUTH] loadUser: Merged user data with backend profile');
-          } else {
-            logger.warn('[AUTH] loadUser: Could not fetch profile from backend:', profileResponse.error);
-            
-            // Fallback to old getUserProfile endpoint
-            try {
-              logger.log('[AUTH] loadUser: Falling back to getUserProfile endpoint...');
-              const profile = await apiClient.getUserProfile(usernameToUse);
-              logger.log('[AUTH] loadUser: Profile fetched from fallback endpoint');
-              
-              // Merge DynamoDB data with Cognito data
-              userData = {
-                ...userData,
-                bio: profile.description || undefined,
-                avatar: profile.profilePicture || undefined,
-              };
-              
-              logger.log('[AUTH] loadUser: Merged user data with fallback profile');
-            } catch (fallbackError: any) {
-              logger.warn('[AUTH] loadUser: Fallback profile fetch also failed');
-              logger.log('[AUTH] loadUser: Continuing with Cognito data only');
-            }
-          }
-        } catch (profileError: any) {
-          logger.warn('[AUTH] loadUser: Error fetching profile from backend:', profileError);
-          logger.log('[AUTH] loadUser: Continuing with Cognito data only');
-          // Continue with Cognito data only - don't fail the login
-        }
-        
-        logger.log('[AUTH] loadUser: User loaded successfully');
+        logger.log('[AUTH] loadUser: User loaded successfully (profile will be fetched on-demand)');
         setUser(userData);
       } else {
         logger.log('[AUTH] loadUser: No valid session tokens, setting user to null');
@@ -426,20 +371,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           
           logger.log('[AUTH] login: Cognito tokens logged, fetching user profile from backend...');
           
-          // Fetch user profile from backend using the new endpoint
-          try {
-            const profileResponse = await apiClient.getUserProfileFromBackend();
-            
-            if (profileResponse.success && profileResponse.profile && profileResponse.userInfo) {
-              logger.log('[AUTH] login: User profile fetched from backend successfully');
-              console.log('📋 [AUTH] login: Profile data:', JSON.stringify(profileResponse.profile, null, 2));
-              console.log('📋 [AUTH] login: User info:', JSON.stringify(profileResponse.userInfo, null, 2));
-            } else {
-              logger.warn('[AUTH] login: Could not fetch profile from backend:', profileResponse.error);
+          // Get userId from token payload
+          const userId = (idToken?.payload as any)?.sub || (accessToken?.payload as any)?.sub;
+          
+          // Call /api/profile?userId= endpoint
+          if (userId) {
+            try {
+              logger.log('[AUTH] login: Calling /api/profile?userId=' + userId);
+              await apiClient.callProfileEndpoint(userId);
+              logger.log('[AUTH] login: Profile endpoint called successfully');
+            } catch (profileError: any) {
+              logger.warn('[AUTH] login: Error calling profile endpoint:', profileError);
+              // Continue with login even if profile endpoint call fails
             }
-          } catch (profileError: any) {
-            logger.warn('[AUTH] login: Error fetching profile from backend:', profileError);
-            // Continue with login even if profile fetch fails
           }
           
           logger.log('[AUTH] login: Loading user data...');
@@ -620,11 +564,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         logger.log('[AUTH] signup: Account auto-confirmed, signing in user...');
         // Sign in with the Cognito username, not email
         await signIn({ username: cognitoUsername, password });
-        logger.log('[AUTH] signup: User signed in, fetching user profile from backend...');
+        logger.log('[AUTH] signup: User signed in, calling profile endpoint...');
+        
+        // Call /api/profile?userId= endpoint
+        try {
+          logger.log('[AUTH] signup: Calling /api/profile?userId=' + userId);
+          await apiClient.callProfileEndpoint(userId);
+          logger.log('[AUTH] signup: Profile endpoint called successfully');
+        } catch (profileError: any) {
+          logger.warn('[AUTH] signup: Error calling profile endpoint:', profileError);
+          // Continue with signup even if profile endpoint call fails
+        }
         
         // Fetch user profile from backend using the new endpoint
         try {
-          const profileResponse = await apiClient.getUserProfileFromBackend();
+          const profileResponse = await apiClient.getUserProfile();
           
           if (profileResponse.success && profileResponse.profile && profileResponse.userInfo) {
             logger.log('[AUTH] signup: User profile fetched from backend successfully');
@@ -683,11 +637,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         
         // Sign in the user after successful verification - simple approach like Vite version
         await signIn({ username, password });
-        logger.log('[AUTH] confirmSignUp: User signed in, fetching user profile from backend...');
+        logger.log('[AUTH] confirmSignUp: User signed in, fetching user info...');
+        
+        // Get userId from session tokens
+        let userId: string | null = null;
+        try {
+          const session = await fetchAuthSession({ forceRefresh: false });
+          const idToken = session.tokens?.idToken;
+          if (idToken) {
+            userId = (idToken.payload as any)?.sub || null;
+          }
+        } catch (error) {
+          logger.warn('[AUTH] confirmSignUp: Could not get userId from session');
+        }
+        
+        // Call /api/profile?userId= endpoint if userId is available
+        if (userId) {
+          try {
+            logger.log('[AUTH] confirmSignUp: Calling /api/profile?userId=' + userId);
+            await apiClient.callProfileEndpoint(userId);
+            logger.log('[AUTH] confirmSignUp: Profile endpoint called successfully');
+          } catch (profileError: any) {
+            logger.warn('[AUTH] confirmSignUp: Error calling profile endpoint:', profileError);
+            // Continue with confirmation even if profile endpoint call fails
+          }
+        }
         
         // Fetch user profile from backend using the new endpoint
         try {
-          const profileResponse = await apiClient.getUserProfileFromBackend();
+          const profileResponse = await apiClient.getUserProfile();
           
           if (profileResponse.success && profileResponse.profile && profileResponse.userInfo) {
             logger.log('[AUTH] confirmSignUp: User profile fetched from backend successfully');
@@ -819,6 +797,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSavedItems(savedItems.filter(item => item.id !== id));
   };
 
+  const refreshProfile = async () => {
+    if (!user) return;
+    
+    try {
+      logger.log('[AUTH] refreshProfile: Fetching profile from backend...');
+      const profileResponse = await apiClient.getUserProfile();
+      
+      if (profileResponse.success && profileResponse.profile) {
+        logger.log('[AUTH] refreshProfile: Profile fetched successfully');
+        const profile = profileResponse.profile;
+        const userInfo = profileResponse.userInfo;
+        
+        // Merge backend profile data with current user data
+        const updatedUser: User = {
+          ...user,
+          bio: profile.description || profile.bio || undefined,
+          avatar: profile.profilePicture || profile.avatar || undefined,
+          hideProfile: profile.hideProfile || false,
+          username: profile.username ? `@${profile.username}` : user.username,
+          isPremium: (userInfo?.plan && userInfo.plan !== 'AF') || profile.isPremium || false,
+        };
+        
+        setUser(updatedUser);
+        logger.log('[AUTH] refreshProfile: User data updated');
+      } else {
+        logger.warn('[AUTH] refreshProfile: Could not fetch profile:', profileResponse.error);
+      }
+    } catch (error: any) {
+      logger.error('[AUTH] refreshProfile: Error fetching profile:', error);
+      throw new Error('Failed to fetch profile');
+    }
+  };
+
   const updateProfile = async (updates: Partial<User>) => {
     if (!user) return;
     
@@ -861,6 +872,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     saveItem,
     unsaveItem,
     updateProfile,
+    refreshProfile,
   };
 
   logger.log('[AUTH] AuthProvider: Rendering');

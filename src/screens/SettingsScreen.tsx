@@ -24,7 +24,7 @@ export default function SettingsScreen() {
   const { logout, user } = useAuth();
 
   // Mock state for UI (no functionality yet)
-  const [themeMode, setThemeMode] = useState<ThemeMode>('system');
+  const [themeMode, setThemeMode] = useState<ThemeMode>('light');
   const [dailyNotifications, setDailyNotifications] = useState(true);
   const [afPlusNotifications, setAfPlusNotifications] = useState(false);
 
@@ -55,9 +55,9 @@ export default function SettingsScreen() {
       <View style={styles.settingLeft}>
         <View style={[styles.iconContainer, destructive && styles.iconContainerDestructive]}>
           {iconFamily === 'MaterialIcons' ? (
-            <MaterialIcons name={icon as any} size={20} color={destructive ? '#EF4444' : '#6366F1'} />
+            <MaterialIcons name={icon as any} size={20} color={destructive ? '#EF4444' : '#374151'} />
           ) : (
-            <Ionicons name={icon as any} size={20} color={destructive ? '#EF4444' : '#6366F1'} />
+            <Ionicons name={icon as any} size={20} color={destructive ? '#EF4444' : '#374151'} />
           )}
         </View>
         <Text style={[styles.settingTitle, destructive && styles.settingTitleDestructive]}>
@@ -73,46 +73,29 @@ export default function SettingsScreen() {
   );
 
   const renderThemeSelector = () => {
-    const themes: { mode: ThemeMode; label: string; icon: string }[] = [
-      { mode: 'light', label: 'Light', icon: 'wb-sunny' },
-      { mode: 'dark', label: 'Dark', icon: 'nightlight-round' },
-      { mode: 'system', label: 'System', icon: 'phone-iphone' },
-    ];
+    const isLightMode = themeMode === 'light';
 
     return (
       <View style={styles.themeSelectorContainer}>
-        {themes.map((theme, index) => (
-          <TouchableOpacity
-            key={theme.mode}
-            style={[
-              styles.themeOption,
-              themeMode === theme.mode && styles.themeOptionActive,
-              index === 0 && styles.themeOptionFirst,
-              index === themes.length - 1 && styles.themeOptionLast,
-            ]}
-            onPress={() => setThemeMode(theme.mode)}
-            activeOpacity={0.7}
-          >
-            <MaterialIcons
-              name={theme.icon as any}
-              size={22}
-              color={themeMode === theme.mode ? '#6366F1' : '#6B7280'}
-            />
-            <Text
-              style={[
-                styles.themeOptionText,
-                themeMode === theme.mode && styles.themeOptionTextActive,
-              ]}
-            >
-              {theme.label}
+        <TouchableOpacity
+          style={styles.themeToggle}
+          onPress={() => setThemeMode(isLightMode ? 'dark' : 'light')}
+          activeOpacity={0.8}
+        >
+          <View style={[styles.themeSlider, isLightMode ? styles.themeSliderLeft : styles.themeSliderRight]} />
+          <View style={[styles.themeLabel, styles.themeLabelLeft]}>
+            <MaterialIcons name="wb-sunny" size={18} color={isLightMode ? '#fff' : '#9CA3AF'} />
+            <Text style={[styles.themeLabelText, isLightMode && styles.themeLabelTextActive]}>
+              Light
             </Text>
-            {themeMode === theme.mode && (
-              <View style={styles.themeCheckmark}>
-                <MaterialIcons name="check" size={16} color="#fff" />
-              </View>
-            )}
-          </TouchableOpacity>
-        ))}
+          </View>
+          <View style={[styles.themeLabel, styles.themeLabelRight]}>
+            <MaterialIcons name="nightlight-round" size={18} color={!isLightMode ? '#fff' : '#9CA3AF'} />
+            <Text style={[styles.themeLabelText, !isLightMode && styles.themeLabelTextActive]}>
+              Dark
+            </Text>
+          </View>
+        </TouchableOpacity>
       </View>
     );
   };
@@ -153,28 +136,7 @@ export default function SettingsScreen() {
             </View>
           </View>
 
-          {/* Container 2: My Devices */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>My Devices</Text>
-            <View style={styles.card}>
-              <View style={styles.deviceRow}>
-                <View style={styles.settingLeft}>
-                  <View style={styles.iconContainer}>
-                    <Ionicons name="phone-portrait-outline" size={20} color="#6366F1" />
-                  </View>
-                  <View>
-                    <Text style={styles.deviceName}>This Device</Text>
-                    <Text style={styles.deviceInfo}>Last active: Now</Text>
-                  </View>
-                </View>
-                <TouchableOpacity style={styles.removeButton} activeOpacity={0.7}>
-                  <Text style={styles.removeButtonText}>Remove</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </View>
-
-          {/* Container 3: My Settings */}
+          {/* Container 2: My Settings */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>My Settings</Text>
             <View style={styles.card}>
@@ -200,8 +162,8 @@ export default function SettingsScreen() {
                 <Switch
                   value={dailyNotifications}
                   onValueChange={setDailyNotifications}
-                  trackColor={{ false: '#E5E7EB', true: '#C7D2FE' }}
-                  thumbColor={dailyNotifications ? '#6366F1' : '#F3F4F6'}
+                  trackColor={{ false: '#E5E7EB', true: '#9CA3AF' }}
+                  thumbColor={dailyNotifications ? '#374151' : '#F3F4F6'}
                   ios_backgroundColor="#E5E7EB"
                 />
               )}
@@ -218,8 +180,8 @@ export default function SettingsScreen() {
                   <Switch
                     value={afPlusNotifications}
                     onValueChange={setAfPlusNotifications}
-                    trackColor={{ false: '#E5E7EB', true: '#FDE68A' }}
-                    thumbColor={afPlusNotifications ? '#F59E0B' : '#F3F4F6'}
+                    trackColor={{ false: '#E5E7EB', true: '#9CA3AF' }}
+                    thumbColor={afPlusNotifications ? '#374151' : '#F3F4F6'}
                     ios_backgroundColor="#E5E7EB"
                   />
                 )
@@ -318,7 +280,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 10,
-    backgroundColor: '#EEF2FF',
+    backgroundColor: '#F3F4F6',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
@@ -342,86 +304,60 @@ const styles = StyleSheet.create({
     backgroundColor: '#F3F4F6',
     marginLeft: 64,
   },
-  deviceRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 16,
-    paddingHorizontal: 16,
-  },
-  deviceName: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#111827',
-    marginBottom: 2,
-  },
-  deviceInfo: {
-    fontSize: 13,
-    color: '#6B7280',
-  },
-  removeButton: {
-    paddingVertical: 6,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    backgroundColor: '#fff',
-  },
-  removeButtonText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#6B7280',
-  },
   themeSelectorContainer: {
-    flexDirection: 'row',
     paddingHorizontal: 16,
     paddingBottom: 16,
-    gap: 8,
   },
-  themeOption: {
-    flex: 1,
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 8,
-    backgroundColor: '#F9FAFB',
-    borderWidth: 1.5,
-    borderColor: '#E5E7EB',
+  themeToggle: {
     position: 'relative',
+    height: 50,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 4,
   },
-  themeOptionFirst: {
-    borderTopLeftRadius: 12,
-    borderBottomLeftRadius: 12,
-  },
-  themeOptionLast: {
-    borderTopRightRadius: 12,
-    borderBottomRightRadius: 12,
-  },
-  themeOptionActive: {
-    backgroundColor: '#EEF2FF',
-    borderColor: '#6366F1',
-  },
-  themeOptionText: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: '#6B7280',
-    marginTop: 6,
-  },
-  themeOptionTextActive: {
-    color: '#6366F1',
-    fontWeight: '600',
-  },
-  themeCheckmark: {
+  themeSlider: {
     position: 'absolute',
-    top: 6,
-    right: 6,
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: '#6366F1',
+    width: '50%',
+    height: 42,
+    backgroundColor: '#000',
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  themeSliderLeft: {
+    left: 4,
+  },
+  themeSliderRight: {
+    right: 4,
+  },
+  themeLabel: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    zIndex: 1,
+  },
+  themeLabelLeft: {
+    paddingLeft: 8,
+  },
+  themeLabelRight: {
+    paddingRight: 8,
+  },
+  themeLabelText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#9CA3AF',
+  },
+  themeLabelTextActive: {
+    color: '#fff',
   },
   afPlusRow: {
     flexDirection: 'row',
