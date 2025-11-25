@@ -383,7 +383,14 @@ class ApiClient {
         lastCommentId: response.lastCommentId,
       };
     } catch (error: any) {
-      logger.error('[API] getArticleComments error:', error?.message || error);
+      logger.error('[API] getArticleComments error:', {
+        message: error?.message,
+        stack: error?.stack,
+        status: error?.status,
+        url: error?.url,
+        fullError: error,
+        stringified: JSON.stringify(error, Object.getOwnPropertyNames(error)),
+      });
       return {
         success: false,
         error: error?.message || 'Failed to fetch comments',
@@ -428,7 +435,14 @@ class ApiClient {
         comment: response.comment,
       };
     } catch (error: any) {
-      logger.error('[API] createComment error:', error?.message || error);
+      logger.error('[API] createComment error:', {
+        message: error?.message,
+        stack: error?.stack,
+        status: error?.status,
+        url: error?.url,
+        fullError: error,
+        stringified: JSON.stringify(error, Object.getOwnPropertyNames(error)),
+      });
       return {
         success: false,
         error: error?.message || 'Failed to post comment',
@@ -471,7 +485,14 @@ class ApiClient {
         comment: response.comment,
       };
     } catch (error: any) {
-      logger.error('[API] updateComment error:', error?.message || error);
+      logger.error('[API] updateComment error:', {
+        message: error?.message,
+        stack: error?.stack,
+        status: error?.status,
+        url: error?.url,
+        fullError: error,
+        stringified: JSON.stringify(error, Object.getOwnPropertyNames(error)),
+      });
       return {
         success: false,
         error: error?.message || 'Failed to update comment',
@@ -495,7 +516,14 @@ class ApiClient {
         success: true,
       };
     } catch (error: any) {
-      logger.error('[API] deleteComment error:', error?.message || error);
+      logger.error('[API] deleteComment error:', {
+        message: error?.message,
+        stack: error?.stack,
+        status: error?.status,
+        url: error?.url,
+        fullError: error,
+        stringified: JSON.stringify(error, Object.getOwnPropertyNames(error)),
+      });
       return {
         success: false,
         error: error?.message || 'Failed to delete comment',
