@@ -327,6 +327,181 @@ class ApiClient {
       return null;
     }
   }
+
+  // ========== COMMENTS API ==========
+
+  // Get comments for an article
+  async getArticleComments(
+    articleId: string | number,
+    options?: {
+      limit?: number;
+      lastCommentId?: string;
+      sort?: 'asc' | 'desc';
+    }
+  ): Promise<{
+    success: boolean;
+    comments?: Array<{
+      comment_id: string;
+      article_id: string;
+      user_id: string;
+      content: string;
+      createdAt: string;
+      updatedAt: string;
+      isDeleted: boolean;
+      author: {
+        username: string;
+        name?: string;
+        avatar?: string;
+      };
+    }>;
+    count?: number;
+    hasMore?: boolean;
+    lastCommentId?: string;
+    error?: string;
+  }> {
+    try {
+      const articleIdStr = String(articleId);
+      let endpoint = `/api/articles/${encodeURIComponent(articleIdStr)}/comments`;
+      
+      const params = new URLSearchParams();
+      if (options?.limit) params.append('limit', String(options.limit));
+      if (options?.lastCommentId) params.append('lastCommentId', options.lastCommentId);
+      if (options?.sort) params.append('sort', options.sort);
+      
+      if (params.toString()) {
+        endpoint += `?${params.toString()}`;
+      }
+
+      // Comments can be fetched without auth (public)
+      const response = await this.requestWithoutAuth<any>(endpoint);
+      
+      return {
+        success: true,
+        comments: response.comments || [],
+        count: response.count || 0,
+        hasMore: response.hasMore || false,
+        lastCommentId: response.lastCommentId,
+      };
+    } catch (error: any) {
+      logger.error('[API] getArticleComments error:', error?.message || error);
+      return {
+        success: false,
+        error: error?.message || 'Failed to fetch comments',
+        comments: [],
+      };
+    }
+  }
+
+  // Create a new comment
+  async createComment(
+    articleId: string | number,
+    content: string
+  ): Promise<{
+    success: boolean;
+    comment?: {
+      comment_id: string;
+      article_id: string;
+      user_id: string;
+      content: string;
+      createdAt: string;
+      updatedAt: string;
+      isDeleted: boolean;
+      author: {
+        username: string;
+        name?: string;
+        avatar?: string;
+      };
+    };
+    error?: string;
+  }> {
+    try {
+      const articleIdStr = String(articleId);
+      const endpoint = `/api/articles/${encodeURIComponent(articleIdStr)}/comments`;
+      
+      const response = await this.request<any>(endpoint, {
+        method: 'POST',
+        body: { content: content.trim() },
+      });
+
+      return {
+        success: true,
+        comment: response.comment,
+      };
+    } catch (error: any) {
+      logger.error('[API] createComment error:', error?.message || error);
+      return {
+        success: false,
+        error: error?.message || 'Failed to post comment',
+      };
+    }
+  }
+
+  // Update a comment
+  async updateComment(
+    commentId: string,
+    content: string
+  ): Promise<{
+    success: boolean;
+    comment?: {
+      comment_id: string;
+      article_id: string;
+      user_id: string;
+      content: string;
+      createdAt: string;
+      updatedAt: string;
+      isDeleted: boolean;
+      author: {
+        username: string;
+        name?: string;
+        avatar?: string;
+      };
+    };
+    error?: string;
+  }> {
+    try {
+      const endpoint = `/api/comments/${encodeURIComponent(commentId)}`;
+      
+      const response = await this.request<any>(endpoint, {
+        method: 'PUT',
+        body: { content: content.trim() },
+      });
+
+      return {
+        success: true,
+        comment: response.comment,
+      };
+    } catch (error: any) {
+      logger.error('[API] updateComment error:', error?.message || error);
+      return {
+        success: false,
+        error: error?.message || 'Failed to update comment',
+      };
+    }
+  }
+
+  // Delete a comment
+  async deleteComment(commentId: string): Promise<{
+    success: boolean;
+    error?: string;
+  }> {
+    try {
+      const endpoint = `/api/comments/${encodeURIComponent(commentId)}`;
+      
+      await this.request<any>(endpoint, {
+        method: 'DELETE',
+      });
+
+      return {
+        success: true,
+      };
+    } catch (error: any) {
+      logger.error('[API] deleteComment error:', error?.message || error);
+      return {
+        success: false,
+        error: error?.message || 'Failed to delete comment',
+      };
+    }
+  }
 }
 
 export const apiClient = new ApiClient();

@@ -17,6 +17,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/AppNavigator';
 import Layout from '../components/Layout';
 import ParagraphBlock from '../components/ParagraphBlock';
+import CommentSection from '../components/CommentSection';
 import { parseToParagraphBlocks, ParagraphBlock as ParagraphBlockType } from '../lib/paragraphParser';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -52,7 +53,7 @@ export default function ArticleDetailScreen({ route }: ArticleDetailScreenProps)
 
   // Parse content into paragraph blocks
   const paragraphBlocks = parseToParagraphBlocks(article.content);
-  const totalPages = paragraphBlocks.length + 1; // +1 for title page
+  const totalPages = paragraphBlocks.length + 2; // +1 for title page, +1 for comments
 
   const handleBack = () => {
     navigation.goBack();
@@ -203,6 +204,11 @@ export default function ArticleDetailScreen({ route }: ArticleDetailScreenProps)
               {renderParagraphPage(block, index)}
             </View>
           ))}
+
+          {/* Comments Page */}
+          <View key="comments-page" style={styles.page}>
+            <CommentSection articleId={article.id} />
+          </View>
         </ScrollView>
       </View>
     </Layout>
