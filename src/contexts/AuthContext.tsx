@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
 import { signUp, signIn, signOut, getCurrentUser, fetchAuthSession, updateUserAttribute, confirmSignUp } from 'aws-amplify/auth';
 import { apiClient } from '../lib/api';
 import { logger } from '../lib/logger';
@@ -13,6 +13,7 @@ interface User {
   avatar?: string;
   bio?: string;
   hideProfile?: boolean;
+  memberNumber?: string;
 }
 
 export interface SavedItem {
@@ -26,6 +27,7 @@ export interface SavedItem {
 interface AuthContextType {
   user: User | null;
   loading: boolean;
+  profileLoading: boolean; // Track if profile is being fetched
   login: (email: string, password: string) => Promise<void>;
   signup: (email: string, password: string, name: string, username: string) => Promise<{ requiresVerification: boolean; username: string; email: string; userId: string } | void>;
   confirmSignUp: (username: string, confirmationCode: string, password: string, email?: string) => Promise<void>;
@@ -43,7 +45,9 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [profileLoading, setProfileLoading] = useState(false); // Track if profile is being fetched
   const [savedItems, setSavedItems] = useState<SavedItem[]>([]);
+  const profileFetchedRef = useRef(false); // Track if profile has been fetched in background
   
   // SECURITY: Store username in encrypted SecureStore instead of plain AsyncStorage
   const getStoredUsername = async (email: string): Promise<string> => {
@@ -149,17 +153,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           null;
         
         console.log('🔍 [AUTH] loadUser: Cognito username from token:', cognitoUsername);
-        console.log('🔍 [AUTH] loadUser: All token attributes:', JSON.stringify(attributes, null, 2));
+        //console.log('🔍 [AUTH] loadUser: All token attributes:', JSON.stringify(attributes, null, 2));
         
         // Use Cognito username directly, or fallback to stored username
         let usernameToUse: string;
         if (cognitoUsername) {
-          // Use the actual Cognito username (add @ for display)
-          usernameToUse = `@${cognitoUsername}`;
+          // Use the actual Cognito username (add @ for display, but check if it already has @)
+          const cleanCognitoUsername = cognitoUsername.startsWith('@') 
+            ? cognitoUsername.substring(1) 
+            : cognitoUsername;
+          usernameToUse = `@${cleanCognitoUsername}`;
           // Store it for future use
           await setStoredUsername(email, usernameToUse);
-          await setCognitoUsername(email, cognitoUsername);
-          console.log('✅ [AUTH] loadUser: Using Cognito username:', cognitoUsername);
+          await setCognitoUsername(email, cleanCognitoUsername);
+          console.log('✅ [AUTH] loadUser: Using Cognito username:', cleanCognitoUsername);
         } else {
           // Fallback to stored username if Cognito username not found
           const storedUsername = await getStoredUsername(email);
@@ -178,16 +185,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           isPremium: false, // Will be updated when profile is fetched
         };
         
-        logger.log('[AUTH] loadUser: User loaded successfully (profile will be fetched on-demand)');
+        logger.log('[AUTH] loadUser: User loaded successfully');
         setUser(userData);
+        
+        // Immediately fetch extended profile data after user is loaded
+        // This ensures profile data is available before ProfileScreen renders
+        // Pass userData directly to avoid race condition with state update
+        if (!profileFetchedRef.current) {
+          profileFetchedRef.current = true;
+          logger.log('[AUTH] loadUser: Starting profile fetch immediately after user load...');
+          logger.log('[AUTH] loadUser: Passing userData directly to refreshProfile to avoid race condition');
+          setProfileLoading(true);
+          // Pass userData directly since setUser() is async and user state won't be updated yet
+          refreshProfile(userData)
+            .then(() => {
+              logger.log('[AUTH] loadUser: Profile fetch completed');
+              setProfileLoading(false);
+            })
+            .catch((error) => {
+              logger.error('[AUTH] loadUser: Profile fetch failed:', error);
+              profileFetchedRef.current = false; // Allow retry
+              setProfileLoading(false);
+            });
+        }
       } else {
         logger.log('[AUTH] loadUser: No valid session tokens, setting user to null');
         setUser(null);
+        profileFetchedRef.current = false; // Reset flag when user logs out
+        setProfileLoading(false);
       }
     } catch (error: any) {
       // User not authenticated - clear any stale data
       logger.log('[AUTH] loadUser: User not authenticated, clearing user state');
       setUser(null);
+      profileFetchedRef.current = false; // Reset flag
+      setProfileLoading(false);
     } finally {
       setLoading(false);
       logger.log('[AUTH] loadUser: Finished loading user');
@@ -797,36 +829,116 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSavedItems(savedItems.filter(item => item.id !== id));
   };
 
-  const refreshProfile = async () => {
-    if (!user) return;
+  const refreshProfile = async (userOverride?: User) => {
+    // Use provided user or state user
+    const userToUse = userOverride || user;
+    if (!userToUse) {
+      logger.warn('[AUTH] refreshProfile: No user, skipping profile fetch');
+      return;
+    }
     
     try {
       logger.log('[AUTH] refreshProfile: Fetching profile from backend...');
+      logger.log('[AUTH] refreshProfile: Calling apiClient.getUserProfile()...');
       const profileResponse = await apiClient.getUserProfile();
+      logger.log('[AUTH] refreshProfile: getUserProfile response received:', {
+        success: profileResponse.success,
+        hasProfile: !!profileResponse.profile,
+        hasError: !!profileResponse.error,
+      });
       
       if (profileResponse.success && profileResponse.profile) {
         logger.log('[AUTH] refreshProfile: Profile fetched successfully');
+        
+        // Log the full profile response to see what data we're getting
+        console.log('[AUTH] refreshProfile: Full profile response:', JSON.stringify(profileResponse, null, 2));
+        
         const profile = profileResponse.profile;
         const userInfo = profileResponse.userInfo;
         
-        // Merge backend profile data with current user data
-        const updatedUser: User = {
-          ...user,
-          bio: profile.description || profile.bio || undefined,
-          avatar: profile.profilePicture || profile.avatar || undefined,
-          hideProfile: profile.hideProfile || false,
-          username: profile.username ? `@${profile.username}` : user.username,
-          isPremium: (userInfo?.plan && userInfo.plan !== 'AF') || profile.isPremium || false,
-        };
+        // Handle nested profile structure (API sometimes returns profile.profile)
+        const actualProfile = (profile as any)?.profile || profile;
         
-        setUser(updatedUser);
-        logger.log('[AUTH] refreshProfile: User data updated');
+        // Extract member number from various possible field names and locations
+        // Check actual profile object first, then nested profile, then userInfo, then root response
+        const userInfoAny = userInfo as any;
+        const userNumber = 
+          actualProfile.userNumber ?? 
+          actualProfile.memberNumber ?? 
+          actualProfile.user_number ??
+          actualProfile.member_number ??
+          (profile as any)?.userNumber ??
+          (profile as any)?.memberNumber ??
+          (profile as any)?.user_number ??
+          (profile as any)?.member_number ??
+          userInfoAny?.userNumber ??
+          userInfoAny?.memberNumber ??
+          userInfoAny?.user_number ??
+          userInfoAny?.member_number ??
+          (profileResponse as any).userNumber ??
+          (profileResponse as any).memberNumber ??
+          (profileResponse as any).user_number ??
+          (profileResponse as any).member_number;
+        
+        const memberNumberStr = userNumber !== null && userNumber !== undefined ? String(userNumber) : undefined;
+        
+        console.log('[AUTH] refreshProfile: Full profile object:', JSON.stringify(profile, null, 2));
+        console.log('[AUTH] refreshProfile: Actual profile (after unwrapping):', JSON.stringify(actualProfile, null, 2));
+        console.log('[AUTH] refreshProfile: userInfo object:', JSON.stringify(userInfo, null, 2));
+        console.log('[AUTH] refreshProfile: Extracted userNumber/memberNumber:', userNumber);
+        console.log('[AUTH] refreshProfile: Member number string:', memberNumberStr);
+        console.log('[AUTH] refreshProfile: Profile keys:', Object.keys(profile));
+        console.log('[AUTH] refreshProfile: Actual profile keys:', Object.keys(actualProfile));
+        console.log('[AUTH] refreshProfile: userInfo keys:', userInfo ? Object.keys(userInfo) : 'null');
+        
+        // Get current user state (may have been updated since we started)
+        setUser((currentUser) => {
+          if (!currentUser) return currentUser;
+          
+          // Merge backend profile data with current user data
+          // Use actualProfile for all field access since API may return nested structure
+          // API returns: activity, createdAt, email, plan, profilePicUrl, savedArticles, 
+          // savedComments, statistics, updatedAt, username, userNumber
+          const updatedUser: User = {
+            ...currentUser,
+            // Bio/description - check if API returns description field (may not be in your list)
+            bio: actualProfile.description || actualProfile.bio || profile.description || profile.bio || undefined,
+            // Avatar - API returns profilePicUrl
+            avatar: actualProfile.profilePicUrl || actualProfile.profilePicture || actualProfile.avatar || 
+                    profile.profilePicUrl || profile.profilePicture || profile.avatar || undefined,
+            hideProfile: actualProfile.hideProfile || profile.hideProfile || false,
+            // Username - API returns username (without @)
+            username: (actualProfile.username || profile.username)
+              ? ((actualProfile.username || profile.username).startsWith('@') 
+                  ? (actualProfile.username || profile.username) 
+                  : `@${actualProfile.username || profile.username}`)
+              : currentUser.username,
+            // Premium status - API returns plan ('AF' = free, anything else = premium)
+            isPremium: (userInfo?.plan && userInfo.plan !== 'AF') || 
+                      (actualProfile.plan && actualProfile.plan !== 'AF') ||
+                      (profile.plan && profile.plan !== 'AF') ||
+                      actualProfile.isPremium || profile.isPremium || false,
+            // Member number - API returns userNumber
+            memberNumber: memberNumberStr,
+          };
+          
+          logger.log('[AUTH] refreshProfile: User data updated successfully');
+          console.log('[AUTH] refreshProfile: Updated user object:', {
+            id: updatedUser.id,
+            username: updatedUser.username,
+            bio: updatedUser.bio,
+            avatar: updatedUser.avatar,
+            memberNumber: updatedUser.memberNumber,
+            isPremium: updatedUser.isPremium,
+          });
+          return updatedUser;
+        });
       } else {
         logger.warn('[AUTH] refreshProfile: Could not fetch profile:', profileResponse.error);
       }
     } catch (error: any) {
       logger.error('[AUTH] refreshProfile: Error fetching profile:', error);
-      throw new Error('Failed to fetch profile');
+      throw error; // Re-throw so caller knows it failed
     }
   };
 
@@ -850,11 +962,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await setStoredUsername(user.email, updates.username);
       }
       
-      // Update local state for other fields (username, etc.) until custom attributes are added
-      setUser({ ...user, ...updates });
+      // Update local state immediately for all fields (avatar, bio, etc.)
+      // This ensures UI updates instantly before any backend sync
+      setUser((currentUser) => {
+        if (!currentUser) return currentUser;
+        return { ...currentUser, ...updates };
+      });
       
-      // Reload user to get updated data from Cognito
-      await loadUser();
+      // Only reload from Cognito if we updated name (which is in Cognito)
+      // Don't reload for avatar/bio as they're not in Cognito and loadUser() would overwrite them
+      if (updates.name) {
+        await loadUser();
+        // After loadUser, restore the avatar/bio updates since loadUser doesn't have them
+        if (updates.avatar !== undefined || updates.bio !== undefined) {
+          setUser((currentUser) => {
+            if (!currentUser) return currentUser;
+            return { ...currentUser, ...updates };
+          });
+        }
+      }
     } catch (error: any) {
       throw new Error(error.message || 'Failed to update profile');
     }
@@ -863,6 +989,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const contextValue: AuthContextType = {
     user,
     loading,
+    profileLoading,
     login,
     signup,
     confirmSignUp: confirmSignUpVerification,

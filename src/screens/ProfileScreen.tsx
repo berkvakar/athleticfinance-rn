@@ -12,6 +12,8 @@ import {
   Alert,
   Animated,
   Dimensions,
+  Modal,
+  RefreshControl,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -19,7 +21,6 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useAuth } from '../contexts/AuthContext';
 import type { SavedItem } from '../contexts/AuthContext';
 import Layout from '../components/Layout';
-import { apiClient } from '../lib/api';
 import type { RootStackParamList } from '../navigation/AppNavigator';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -37,7 +38,7 @@ type TabType = 'comments' | 'saved' | 'statistics';
 
 export default function ProfileScreen() {
   const navigation = useNavigation<NavigationProp>();
-  const { user, savedItems, loading: authLoading, refreshProfile } = useAuth();
+  const { user, savedItems, loading: authLoading, profileLoading, refreshProfile } = useAuth();
   const [profileImage, setProfileImage] = useState<string | null>(null);
   const [bio, setBio] = useState(user?.bio || '');
   const [memberNumber, setMemberNumber] = useState<string>('');
@@ -46,6 +47,7 @@ export default function ProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [isEditingBio, setIsEditingBio] = useState(false);
   const [activeTab, setActiveTab] = useState<TabType>('comments');
+  const [refreshing, setRefreshing] = useState(false);
   const [tabPositions, setTabPositions] = useState<{ [key: string]: number }>({
     comments: 0,
     saved: 0,
@@ -56,25 +58,94 @@ export default function ProfileScreen() {
   const screenWidth = Dimensions.get('window').width;
   const tabWidth = screenWidth / 3;
   const hasLoadedProfile = useRef(false);
+  
+  // Profile picture zoom modal
+  const [isZoomed, setIsZoomed] = useState(false);
+  const zoomScale = useRef(new Animated.Value(0)).current;
+  const zoomOpacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    // Wait for auth to finish loading before trying to load profile
+    // Wait for auth and profile to finish loading before trying to load profile
     // Only load once when component mounts
-    if (!authLoading && user && !hasLoadedProfile.current) {
+    if (!authLoading && !profileLoading && user && !hasLoadedProfile.current) {
       hasLoadedProfile.current = true;
       loadProfileData();
-    } else if (!authLoading && !user) {
+    } else if (!authLoading && !profileLoading && !user) {
       // User not authenticated, stop loading
       setLoading(false);
     }
-  }, [authLoading, user?.id]); // Only depend on user.id, not the entire user object
+  }, [authLoading, profileLoading, user?.id]); // Wait for profile to load too
 
   // Sync bio with user context when it changes
   useEffect(() => {
-    if (user?.bio) {
-      setBio(user.bio);
+    if (user?.bio !== undefined) {
+      setBio(user.bio || '');
     }
   }, [user?.bio]);
+
+  // Sync member number with user context when it changes
+  useEffect(() => {
+    if (user?.memberNumber !== undefined) {
+      console.log('[PROFILE SCREEN] Member number changed:', user.memberNumber);
+      setMemberNumber(user.memberNumber || '');
+    }
+  }, [user?.memberNumber]);
+
+  // Sync profile image with user avatar from context
+  // Handle S3 keys by converting them to URLs
+  useEffect(() => {
+    console.log('[PROFILE SCREEN] user.avatar changed:', user?.avatar);
+    if (user?.avatar) {
+      // Check if it's an S3 key (doesn't start with http) or already a URL
+      if (!user.avatar.startsWith('http')) {
+        // It's an S3 key - convert to URL
+        console.log('[PROFILE SCREEN] Avatar is S3 key, fetching URL:', user.avatar);
+        const { apiClient } = require('../lib/api');
+        apiClient.getProfilePictureUrl(user.avatar)
+          .then((result: { success: boolean; url?: string; error?: string }) => {
+            if (result.success && result.url) {
+              console.log('[PROFILE SCREEN] Got URL from S3 key:', result.url);
+              setProfileImage(result.url);
+            } else {
+              console.warn('[PROFILE SCREEN] Failed to get URL for S3 key:', user.avatar);
+              setProfileImage(null);
+            }
+          })
+          .catch((error: any) => {
+            console.error('[PROFILE SCREEN] Error fetching URL for S3 key:', error);
+            setProfileImage(null);
+          });
+      } else {
+        // It's already a URL
+        console.log('[PROFILE SCREEN] Setting profileImage to URL:', user.avatar);
+        setProfileImage(user.avatar);
+      }
+    } else {
+      // Clear profile image if user.avatar is null/undefined
+      console.log('[PROFILE SCREEN] Clearing profileImage');
+      setProfileImage(null);
+    }
+  }, [user?.avatar]);
+
+  // Handle pull-to-refresh
+  const onRefresh = async () => {
+    if (!user) return;
+    
+    try {
+      setRefreshing(true);
+      console.log('[PROFILE SCREEN] Refreshing profile data from DynamoDB...');
+      
+      // Call refreshProfile to fetch latest data from backend/DynamoDB
+      await refreshProfile();
+      
+      console.log('[PROFILE SCREEN] Profile refresh completed');
+    } catch (error: any) {
+      console.error('[PROFILE SCREEN] Error refreshing profile:', error);
+      Alert.alert('Error', 'Failed to refresh profile. Please try again.');
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const loadProfileData = async () => {
     // Double check user exists and is authenticated
@@ -86,89 +157,37 @@ export default function ProfileScreen() {
     try {
       setLoading(true);
       
-      // Fetch fresh profile data from backend
-      try {
-        console.log('[PROFILE] Refreshing profile data from backend...');
-        await refreshProfile();
-        console.log('[PROFILE] Profile data refreshed');
-        
-        // Use the updated user data from context after refresh
-        const profileData = await apiClient.getUserProfile();
-        console.log('[PROFILE] Profile data loaded:', JSON.stringify(profileData, null, 2));
-        
-        // Update state with profile data from backend
-        // Handle different response structures (including double nesting)
-        if (profileData) {
-          let profile: any = profileData;
-          
-          // Handle double nesting: profileData.profile.profile
-          if (profileData.profile?.profile) {
-            profile = profileData.profile.profile;
-          } else if (profileData.profile) {
-            profile = profileData.profile;
-          }
-          
-          // Update all profile fields
-          if (profile.description !== undefined) {
-            setBio(profile.description || '');
-          }
-          
-          // Check for userNumber in various possible field names
-          const userNumber = profile.userNumber ?? profile.memberNumber ?? profile.user_number;
-          if (userNumber !== undefined && userNumber !== null) {
-            setMemberNumber(userNumber.toString());
-          }
-          
-          // Check for profile picture in various field names
-          const profilePic = profile.profilePicture ?? profile.profilePicUrl ?? profile.avatar;
-          if (profilePic !== undefined && profilePic !== null && profilePic !== '') {
-            setProfileImage(profilePic);
-          }
-          
-          if (profile.username !== undefined) {
-            // Store username with @ prefix if not already present
-            const username = profile.username.startsWith('@') 
-              ? profile.username 
-              : `@${profile.username}`;
-            setProfileUsername(username);
-          }
-          
-          console.log('[PROFILE] Profile state updated:', {
-            username: profile.username || profileUsername,
-            bio: profile.description || bio,
-            userNumber: userNumber,
-            memberNumber: memberNumber,
-            profilePic: profilePic,
-            hasProfileImage: !!profilePic || !!profileImage,
-            fullProfile: profile
-          });
-        }
-      } catch (error: any) {
-        console.warn('[PROFILE] Could not load profile from backend:', error?.message || error);
-        console.warn('[PROFILE] Error details:', error);
-        
-        // Check if error is due to missing authentication
-        if (error?.message?.includes('No authentication token') || 
-            error?.message?.includes('Could not extract userId')) {
-          console.log('[PROFILE] Authentication not ready yet, will retry when token is available');
-          // Don't set loading to false - let it retry when user/auth state updates
-          return;
-        }
-        
-        // Use data from AuthContext if available
+      // Use data directly from user context (fetched in background by AuthContext)
+      // No API calls here - just use what's already in context
+      console.log('[PROFILE] Loading profile data from user context (no API call)');
+      
+      // Update state with data from user context
+      if (user.bio !== undefined) {
         setBio(user.bio || '');
-        setProfileImage(user.avatar || null);
       }
       
-      // Load user comments
-      try {
-        // const userComments = await apiClient.getUserComments(user.id);
-        // setComments(userComments);
-        setComments([]); // Empty for now
-      } catch (error) {
-        console.error('[PROFILE] Error loading comments:', error);
-        setComments([]);
+      if (user.avatar) {
+        setProfileImage(user.avatar);
       }
+      
+      if (user.username) {
+        setProfileUsername(user.username);
+      }
+      
+      if (user.memberNumber !== undefined) {
+        setMemberNumber(user.memberNumber || '');
+        console.log('[PROFILE] Member number set from context:', user.memberNumber);
+      }
+      
+      console.log('[PROFILE] Profile state updated from context:', {
+        username: user.username,
+        bio: user.bio,
+        avatar: user.avatar,
+        memberNumber: user.memberNumber,
+      });
+      
+      // Load user comments (if needed in future)
+      setComments([]); // Empty for now
     } catch (error) {
       console.error('[PROFILE] Error loading profile:', error);
     } finally {
@@ -176,36 +195,45 @@ export default function ProfileScreen() {
     }
   };
 
-  const handleImagePicker = async () => {
-    // TODO: Install expo-image-picker: npx expo install expo-image-picker
-    // Then uncomment and implement image picker functionality
-    Alert.alert(
-      'Coming Soon',
-      'Profile picture editing will be available soon. Install expo-image-picker to enable this feature.',
-      [{ text: 'OK' }]
-    );
-    
-    // Example implementation (requires expo-image-picker):
-    // try {
-    //   const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    //   if (status !== 'granted') {
-    //     Alert.alert('Permission needed', 'Please grant camera roll permissions to change your profile picture.');
-    //     return;
-    //   }
-    //   const result = await ImagePicker.launchImageLibraryAsync({
-    //     mediaTypes: ImagePicker.MediaTypeOptions.Images,
-    //     allowsEditing: true,
-    //     aspect: [1, 1],
-    //     quality: 0.8,
-    //   });
-    //   if (!result.canceled && result.assets[0]) {
-    //     setProfileImage(result.assets[0].uri);
-    //     // TODO: Upload image to backend/S3
-    //   }
-    // } catch (error) {
-    //   console.error('Error picking image:', error);
-    //   Alert.alert('Error', 'Failed to pick image');
-    // }
+  const handleImagePicker = () => {
+    // Always show zoom modal when clicking profile picture
+    // Only "Edit Profile" button should navigate to edit screen
+    openZoomModal();
+  };
+
+  const openZoomModal = () => {
+    setIsZoomed(true);
+    Animated.parallel([
+      Animated.spring(zoomScale, {
+        toValue: 1,
+        useNativeDriver: true,
+        tension: 50,
+        friction: 7,
+      }),
+      Animated.timing(zoomOpacity, {
+        toValue: 1,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  };
+
+  const closeZoomModal = () => {
+    Animated.parallel([
+      Animated.spring(zoomScale, {
+        toValue: 0,
+        useNativeDriver: true,
+        tension: 50,
+        friction: 7,
+      }),
+      Animated.timing(zoomOpacity, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setIsZoomed(false);
+    });
   };
 
   const handleSaveBio = async () => {
@@ -307,8 +335,8 @@ export default function ProfileScreen() {
     </View>
   );
 
-  // Show loading if auth is still loading or profile is loading
-  if (authLoading || loading) {
+  // Show loading if auth is still loading, profile is loading, or local profile is loading
+  if (authLoading || profileLoading || loading) {
     return (
       <Layout>
         <View style={styles.loadingContainer}>
@@ -338,6 +366,17 @@ export default function ProfileScreen() {
         style={styles.container}
         contentContainerStyle={styles.contentContainer}
         showsVerticalScrollIndicator={false}
+        bounces={true}
+        overScrollMode="auto"
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#000"
+            colors={['#000']}
+            progressViewOffset={0}
+          />
+        }
       >
         {/* Profile Header - Instagram Style */}
         <View style={styles.profileHeader}>
@@ -347,23 +386,18 @@ export default function ProfileScreen() {
             onPress={handleImagePicker}
             activeOpacity={0.8}
           >
-            {profileImage ? (
+            {(profileImage || user?.avatar) ? (
               <Image 
-                source={{ uri: profileImage }} 
+                source={{ uri: profileImage || user?.avatar || '' }} 
                 style={styles.avatar}
                 resizeMode="cover"
-                // Optimize quality
-                defaultSource={require('../../assets/af-logo.png')}
                 fadeDuration={200}
+                onLoad={() => console.log('[PROFILE SCREEN] Image loaded successfully')}
+                onError={(error) => console.error('[PROFILE SCREEN] Image load error:', error)}
               />
             ) : (
-              <View style={styles.avatar}>
-                <Text style={styles.avatarText}>
-                  {user?.name
-                    ?.split(' ')
-                    .map((n) => n[0])
-                    .join('') || user?.email?.[0]?.toUpperCase() || 'U'}
-                </Text>
+              <View style={styles.avatarPlaceholder}>
+                <MaterialIcons name="person" size={45} color="#9CA3AF" />
               </View>
             )}
           </TouchableOpacity>
@@ -386,13 +420,11 @@ export default function ProfileScreen() {
             </Text>
             
             {/* Bio Section */}
-            <View style={styles.bioSectionInline}>
-              {bio ? (
+            {bio ? (
+              <View style={styles.bioSectionInline}>
                 <Text style={styles.bioText}>{bio}</Text>
-              ) : (
-                <Text style={styles.bioPlaceholder}>No bio yet</Text>
-              )}
-            </View>
+              </View>
+            ) : null}
 
             {/* Edit Profile Button */}
             <TouchableOpacity 
@@ -521,6 +553,60 @@ export default function ProfileScreen() {
           </View>
         </View>
       </ScrollView>
+
+      {/* Profile Picture Zoom Modal */}
+      <Modal
+        visible={isZoomed}
+        transparent={true}
+        animationType="none"
+        onRequestClose={closeZoomModal}
+      >
+        <TouchableOpacity
+          style={styles.zoomModalOverlay}
+          activeOpacity={1}
+          onPress={closeZoomModal}
+        >
+          <Animated.View
+            style={[
+              styles.zoomModalContent,
+              {
+                opacity: zoomOpacity,
+                transform: [
+                  {
+                    scale: zoomScale.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [0.5, 1],
+                    }),
+                  },
+                ],
+              },
+            ]}
+          >
+            <TouchableOpacity
+              activeOpacity={1}
+              onPress={(e) => e.stopPropagation()}
+            >
+              {(profileImage || user?.avatar) ? (
+                <Image
+                  source={{ uri: profileImage || user?.avatar || '' }}
+                  style={styles.zoomedImage}
+                  resizeMode="contain"
+                />
+              ) : (
+                <View style={styles.zoomedPlaceholder}>
+                  <MaterialIcons name="person" size={120} color="#9CA3AF" />
+                </View>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.zoomCloseButton}
+              onPress={closeZoomModal}
+            >
+              <MaterialIcons name="close" size={28} color="#fff" />
+            </TouchableOpacity>
+          </Animated.View>
+        </TouchableOpacity>
+      </Modal>
     </Layout>
   );
 }
@@ -531,8 +617,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
   },
   contentContainer: {
-    paddingBottom: 40,
-    flexGrow: 1,
+    paddingBottom: 100,
   },
   loadingContainer: {
     flex: 1,
@@ -555,17 +640,19 @@ const styles = StyleSheet.create({
     height: 90,
     borderRadius: 45,
     backgroundColor: '#F5F5F5',
+    borderWidth: 2,
+    borderColor: '#E5E5E5',
+    overflow: 'hidden',
+  },
+  avatarPlaceholder: {
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    backgroundColor: '#E5E7EB',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
     borderColor: '#E5E5E5',
-    // Ensure sharp image rendering
-    overflow: 'hidden',
-  },
-  avatarText: {
-    fontSize: 36,
-    fontWeight: 'bold',
-    color: '#000',
   },
   profileInfo: {
     flex: 1,
@@ -812,5 +899,42 @@ const styles = StyleSheet.create({
   savedItemDate: {
     fontSize: 12,
     color: '#999',
+  },
+  zoomModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  zoomModalContent: {
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  zoomedImage: {
+    width: Dimensions.get('window').width * 0.9,
+    height: Dimensions.get('window').width * 0.9,
+    borderRadius: 8,
+  },
+  zoomedPlaceholder: {
+    width: Dimensions.get('window').width * 0.9,
+    height: Dimensions.get('window').width * 0.9,
+    borderRadius: 8,
+    backgroundColor: '#E5E7EB',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  zoomCloseButton: {
+    position: 'absolute',
+    top: 50,
+    right: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10,
   },
 });

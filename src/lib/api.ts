@@ -54,9 +54,9 @@ class ApiClient {
     // Remove UUID error codes
     message = message.replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, '[error-id]');
     
-    // Remove file paths
+    // Remove file paths (Windows and Unix-style absolute paths)
+    message = message.replace(/[A-Z]:\\[^\s]+/gi, '[path]');
     message = message.replace(/\/[^\s]+/g, '[path]');
-    message = message.replace(/C:\\[^\s]+/g, '[path]');
     
     // Return first sentence only, max 100 chars
     return message.split('.')[0].trim().substring(0, 100);
@@ -242,9 +242,12 @@ class ApiClient {
     error?: string;
   }> {
     try {
+      logger.log('[API] getUserProfile: Starting...');
       const userId = await this.getUserId();
+      logger.log('[API] getUserProfile: userId extracted:', userId);
       
       if (!userId) {
+        logger.warn('[API] getUserProfile: No userId available');
         return {
           success: false,
           error: 'No authentication token available',
@@ -252,12 +255,24 @@ class ApiClient {
       }
       
       const endpoint = `/api/profile?userId=${encodeURIComponent(userId)}`;
+      logger.log('[API] getUserProfile: Making request to:', endpoint);
       const response = await this.request<any>(endpoint);
+      logger.log('[API] getUserProfile: Response received');
+      
+      // Handle profile picture - convert S3 key to URL if needed
+      const profile = response.profile || response;
+      if (profile?.profilePicUrl && !profile.profilePicUrl.startsWith('http')) {
+        // It's an S3 key, not a URL - fetch the presigned URL
+        const urlResult = await this.getProfilePictureUrl(profile.profilePicUrl);
+        if (urlResult.success && urlResult.url) {
+          profile.profilePicUrl = urlResult.url;
+        }
+      }
       
       // Return in a consistent format
       return {
         success: true,
-        profile: response.profile || response,
+        profile: profile,
         userInfo: response.userInfo || {
           userId: userId,
           email: response.email,
@@ -527,6 +542,193 @@ class ApiClient {
       return {
         success: false,
         error: error?.message || 'Failed to delete comment',
+      };
+    }
+  }
+
+  // ========== PROFILE UPDATE API ==========
+
+  // Get profile picture URL from S3 key
+  // Backend returns S3 key (e.g., "profile-pictures/user123/123.jpg")
+  // This method converts it to a presigned URL via /api/profile/picture?key=...
+  async getProfilePictureUrl(s3Key: string): Promise<{
+    success: boolean;
+    url?: string;
+    error?: string;
+  }> {
+    try {
+      if (!s3Key) {
+        return {
+          success: false,
+          error: 'S3 key is required',
+        };
+      }
+
+      const endpoint = `/api/profile/picture?key=${encodeURIComponent(s3Key)}`;
+      const response = await this.request<any>(endpoint);
+
+      return {
+        success: true,
+        url: response.url || response.profilePicUrl || response,
+      };
+    } catch (error: any) {
+      logger.error('[API] getProfilePictureUrl error:', {
+        message: error?.message,
+        stack: error?.stack,
+        status: error?.status,
+        url: error?.url,
+      });
+      return {
+        success: false,
+        error: error?.message || 'Failed to get profile picture URL',
+      };
+    }
+  }
+
+  // Update user profile fields (description and/or profile picture)
+  async updateUserProfile(updates: {
+    description?: string;
+    profilePic?: {
+      uri: string;
+      type: string;
+      name: string;
+    };
+  }): Promise<{
+    success: boolean;
+    profile?: {
+      description?: string;
+      profilePicUrl?: string;
+      profilePicKey?: string; // S3 key returned from backend
+    };
+    error?: string;
+  }> {
+    try {
+      const endpoint = `/api/profile/update`;
+      
+      // Prepare the request body
+      const body: any = {};
+      
+      // Add description if provided
+      if (updates.description !== undefined) {
+        body.description = updates.description;
+      }
+      
+      // Handle profile picture upload
+      if (updates.profilePic) {
+        // Convert image to base64 for sending (React Native compatible)
+        try {
+          // For React Native, fetch the local file URI and convert to base64
+          const response = await fetch(updates.profilePic.uri);
+          const blob = await response.blob();
+          
+          // Convert blob to base64 (works in both web and React Native)
+          const base64 = await new Promise<string>((resolve, reject) => {
+            // Try FileReader first (web)
+            if (typeof FileReader !== 'undefined') {
+              const reader = new FileReader();
+              reader.onloadend = () => {
+                const base64String = reader.result as string;
+                // Remove data URL prefix (e.g., "data:image/jpeg;base64,")
+                const base64Data = base64String.split(',')[1] || base64String;
+                resolve(base64Data);
+              };
+              reader.onerror = reject;
+              reader.readAsDataURL(blob);
+            } else {
+              // React Native fallback: convert blob to base64 using arrayBuffer
+              blob.arrayBuffer()
+                .then((buffer) => {
+                  // Convert ArrayBuffer to base64
+                  const bytes = new Uint8Array(buffer);
+                  let binary = '';
+                  const len = bytes.byteLength;
+                  for (let i = 0; i < len; i++) {
+                    binary += String.fromCharCode(bytes[i]);
+                  }
+                  // Use btoa if available, otherwise use Buffer (Node.js) or manual encoding
+                  let base64String: string;
+                  if (typeof btoa !== 'undefined') {
+                    base64String = btoa(binary);
+                  } else {
+                    // Fallback for environments without btoa
+                    // This is a simple base64 encoder
+                    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+                    let result = '';
+                    let i = 0;
+                    while (i < binary.length) {
+                      const a = binary.charCodeAt(i++);
+                      const b = i < binary.length ? binary.charCodeAt(i++) : 0;
+                      const c = i < binary.length ? binary.charCodeAt(i++) : 0;
+                      const bitmap = (a << 16) | (b << 8) | c;
+                      result += chars.charAt((bitmap >> 18) & 63);
+                      result += chars.charAt((bitmap >> 12) & 63);
+                      result += i - 2 < binary.length ? chars.charAt((bitmap >> 6) & 63) : '=';
+                      result += i - 1 < binary.length ? chars.charAt(bitmap & 63) : '=';
+                    }
+                    base64String = result;
+                  }
+                  resolve(base64String);
+                })
+                .catch(reject);
+            }
+          });
+          
+          body.profilePic = {
+            data: base64,
+            type: updates.profilePic.type,
+            name: updates.profilePic.name,
+          };
+        } catch (imageError: any) {
+          logger.error('[API] updateUserProfile: Error converting image to base64:', imageError);
+          throw new Error('Failed to process profile picture');
+        }
+      }
+      
+      // this.request() automatically includes JWT tokens via getAuthHeaders()
+      const response = await this.request<any>(endpoint, {
+        method: 'PUT',
+        body,
+      });
+
+      // Backend now returns S3 key instead of full URL
+      // Format: "profile-pictures/user123/123.jpg"
+      const profilePicKey = response.profilePicUrl || response.profile?.profilePicUrl || response.profilePicKey;
+      
+      // If we got an S3 key, fetch the actual URL
+      let profilePicUrl: string | undefined;
+      if (profilePicKey && !profilePicKey.startsWith('http')) {
+        // It's an S3 key, not a URL - fetch the presigned URL
+        const urlResult = await this.getProfilePictureUrl(profilePicKey);
+        if (urlResult.success && urlResult.url) {
+          profilePicUrl = urlResult.url;
+        } else {
+          logger.warn('[API] updateUserProfile: Failed to get URL for S3 key:', profilePicKey);
+        }
+      } else if (profilePicKey) {
+        // It's already a URL (backward compatibility)
+        profilePicUrl = profilePicKey;
+      }
+
+      return {
+        success: true,
+        profile: {
+          description: response.description || response.profile?.description,
+          profilePicUrl: profilePicUrl,
+          profilePicKey: profilePicKey,
+        },
+      };
+    } catch (error: any) {
+      logger.error('[API] updateUserProfile error:', {
+        message: error?.message,
+        stack: error?.stack,
+        status: error?.status,
+        url: error?.url,
+        fullError: error,
+        stringified: JSON.stringify(error, Object.getOwnPropertyNames(error)),
+      });
+      return {
+        success: false,
+        error: error?.message || 'Failed to update profile',
       };
     }
   }
