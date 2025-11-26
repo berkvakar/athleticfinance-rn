@@ -92,37 +92,13 @@ export default function ProfileScreen() {
   }, [user?.memberNumber]);
 
   // Sync profile image with user avatar from context
-  // Handle S3 keys by converting them to URLs
+  // Avatar is already a full URL or null (no S3 key conversion needed)
   useEffect(() => {
-    console.log('[PROFILE SCREEN] user.avatar changed:', user?.avatar);
-    if (user?.avatar) {
-      // Check if it's an S3 key (doesn't start with http) or already a URL
-      if (!user.avatar.startsWith('http')) {
-        // It's an S3 key - convert to URL
-        console.log('[PROFILE SCREEN] Avatar is S3 key, fetching URL:', user.avatar);
-        const { apiClient } = require('../lib/api');
-        apiClient.getProfilePictureUrl(user.avatar)
-          .then((result: { success: boolean; url?: string; error?: string }) => {
-            if (result.success && result.url) {
-              console.log('[PROFILE SCREEN] Got URL from S3 key:', result.url);
-              setProfileImage(result.url);
-            } else {
-              console.warn('[PROFILE SCREEN] Failed to get URL for S3 key:', user.avatar);
-              setProfileImage(null);
-            }
-          })
-          .catch((error: any) => {
-            console.error('[PROFILE SCREEN] Error fetching URL for S3 key:', error);
-            setProfileImage(null);
-          });
-      } else {
-        // It's already a URL
-        console.log('[PROFILE SCREEN] Setting profileImage to URL:', user.avatar);
-        setProfileImage(user.avatar);
-      }
+    if (user?.avatar && typeof user.avatar === 'string' && user.avatar.trim().length > 0) {
+      // Avatar is already a full URL, ready to use
+      setProfileImage(user.avatar);
     } else {
-      // Clear profile image if user.avatar is null/undefined
-      console.log('[PROFILE SCREEN] Clearing profileImage');
+      // Clear profile image if user.avatar is null/undefined/empty
       setProfileImage(null);
     }
   }, [user?.avatar]);
@@ -386,20 +362,32 @@ export default function ProfileScreen() {
             onPress={handleImagePicker}
             activeOpacity={0.8}
           >
-            {(profileImage || user?.avatar) ? (
-              <Image 
-                source={{ uri: profileImage || user?.avatar || '' }} 
-                style={styles.avatar}
-                resizeMode="cover"
-                fadeDuration={200}
-                onLoad={() => console.log('[PROFILE SCREEN] Image loaded successfully')}
-                onError={(error) => console.error('[PROFILE SCREEN] Image load error:', error)}
-              />
-            ) : (
-              <View style={styles.avatarPlaceholder}>
-                <MaterialIcons name="person" size={45} color="#9CA3AF" />
-              </View>
-            )}
+            {(() => {
+              const avatarUri = profileImage || user?.avatar;
+              // Only render Image if we have a valid non-empty URL
+              if (avatarUri && typeof avatarUri === 'string' && avatarUri.trim().length > 0 && avatarUri.startsWith('http')) {
+                return (
+                  <Image 
+                    source={{ uri: avatarUri }} 
+                    style={styles.avatar}
+                    resizeMode="cover"
+                    fadeDuration={200}
+                    onLoad={() => console.log('[PROFILE SCREEN] Image loaded successfully')}
+                    onError={(error) => {
+                      console.error('[PROFILE SCREEN] Image load error:', error);
+                      // If image fails to load, show placeholder
+                      setProfileImage(null);
+                    }}
+                  />
+                );
+              }
+              // Show placeholder if no valid avatar URL
+              return (
+                <View style={styles.avatarPlaceholder}>
+                  <MaterialIcons name="person" size={45} color="#9CA3AF" />
+                </View>
+              );
+            })()}
           </TouchableOpacity>
 
           {/* Profile Info */}
@@ -586,17 +574,28 @@ export default function ProfileScreen() {
               activeOpacity={1}
               onPress={(e) => e.stopPropagation()}
             >
-              {(profileImage || user?.avatar) ? (
-                <Image
-                  source={{ uri: profileImage || user?.avatar || '' }}
-                  style={styles.zoomedImage}
-                  resizeMode="contain"
-                />
-              ) : (
-                <View style={styles.zoomedPlaceholder}>
-                  <MaterialIcons name="person" size={120} color="#9CA3AF" />
-                </View>
-              )}
+              {(() => {
+                const avatarUri = profileImage || user?.avatar;
+                // Only render Image if we have a valid non-empty URL
+                if (avatarUri && typeof avatarUri === 'string' && avatarUri.trim().length > 0 && avatarUri.startsWith('http')) {
+                  return (
+                    <Image
+                      source={{ uri: avatarUri }}
+                      style={styles.zoomedImage}
+                      resizeMode="contain"
+                      onError={(error) => {
+                        console.error('[PROFILE SCREEN] Zoomed image load error:', error);
+                      }}
+                    />
+                  );
+                }
+                // Show placeholder if no valid avatar URL
+                return (
+                  <View style={styles.zoomedPlaceholder}>
+                    <MaterialIcons name="person" size={120} color="#9CA3AF" />
+                  </View>
+                );
+              })()}
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.zoomCloseButton}

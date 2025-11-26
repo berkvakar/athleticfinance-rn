@@ -891,6 +891,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.log('[AUTH] refreshProfile: Actual profile keys:', Object.keys(actualProfile));
         console.log('[AUTH] refreshProfile: userInfo keys:', userInfo ? Object.keys(userInfo) : 'null');
         
+        // Get avatar URL - convert S3 key to URL if needed (safety check)
+        let avatarUrl = actualProfile.profilePicUrl || actualProfile.profilePicture || actualProfile.avatar || 
+                       profile.profilePicUrl || profile.profilePicture || profile.avatar || undefined;
+        
+        // Safety check: if avatar is an S3 key (doesn't start with http), convert it
+        // This should rarely happen if getUserProfile works correctly, but add as fallback
+        if (avatarUrl && typeof avatarUrl === 'string' && !avatarUrl.startsWith('http')) {
+          logger.warn('[AUTH] refreshProfile: Avatar is S3 key, converting to URL (fallback)');
+          try {
+            const urlResult = await apiClient.getProfilePictureUrl(avatarUrl);
+            if (urlResult.success && urlResult.url) {
+              avatarUrl = urlResult.url;
+              logger.log('[AUTH] refreshProfile: Successfully converted S3 key to URL in fallback');
+            } else {
+              logger.warn('[AUTH] refreshProfile: Failed to convert S3 key in fallback, setting to null');
+              avatarUrl = null;
+            }
+          } catch (error: any) {
+            logger.error('[AUTH] refreshProfile: Error converting S3 key in fallback:', error);
+            avatarUrl = null;
+          }
+        }
+        
         // Get current user state (may have been updated since we started)
         setUser((currentUser) => {
           if (!currentUser) return currentUser;
@@ -903,9 +926,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             ...currentUser,
             // Bio/description - check if API returns description field (may not be in your list)
             bio: actualProfile.description || actualProfile.bio || profile.description || profile.bio || undefined,
-            // Avatar - API returns profilePicUrl
-            avatar: actualProfile.profilePicUrl || actualProfile.profilePicture || actualProfile.avatar || 
-                    profile.profilePicUrl || profile.profilePicture || profile.avatar || undefined,
+            // Avatar - should already be converted to URL above
+            avatar: avatarUrl,
             hideProfile: actualProfile.hideProfile || profile.hideProfile || false,
             // Username - API returns username (without @)
             username: (actualProfile.username || profile.username)

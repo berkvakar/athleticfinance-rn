@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   Alert,
   RefreshControl,
+  Image,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { apiClient } from '../lib/api';
@@ -21,15 +22,15 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 interface Comment {
   comment_id: string;
   article_id: string;
-  user_id: string;
   content: string;
   createdAt: string;
   updatedAt: string;
   isDeleted: boolean;
+  parentCommentId?: string;
   author: {
-    username: string;
-    name?: string;
-    avatar?: string;
+    username: string; // Public username (e.g., "@john_doe")
+    name?: string; // Display name (optional)
+    avatar: string | null; // Full S3 public URL or null (ready to use)
   };
 }
 
@@ -47,6 +48,7 @@ export default function CommentSection({ articleId }: CommentSectionProps) {
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [editText, setEditText] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [avatarUrls, setAvatarUrls] = useState<Record<string, string>>({}); // Store converted presigned URLs
 
   // Format date for display
   const formatDate = (dateString: string) => {
@@ -73,6 +75,18 @@ export default function CommentSection({ articleId }: CommentSectionProps) {
     }
   };
 
+  // Normalize comment to ensure avatar is always string | null (never undefined)
+  const normalizeComment = (comment: any): Comment => {
+    return {
+      ...comment,
+      author: {
+        username: comment.author?.username || 'Anonymous',
+        name: comment.author?.name,
+        avatar: comment.author?.avatar ?? null, // Convert undefined to null
+      },
+    };
+  };
+
   // Fetch comments from API
   const fetchComments = useCallback(async () => {
     try {
@@ -83,7 +97,9 @@ export default function CommentSection({ articleId }: CommentSectionProps) {
       });
 
       if (response.success && response.comments) {
-        setComments(response.comments);
+        // Normalize comments to ensure avatar is always string | null
+        const normalizedComments = response.comments.map(normalizeComment);
+        setComments(normalizedComments);
       } else {
         setError(response.error || 'Failed to load comments');
         setComments([]);
@@ -122,8 +138,9 @@ export default function CommentSection({ articleId }: CommentSectionProps) {
       const response = await apiClient.createComment(articleId, trimmedContent);
 
       if (response.success && response.comment) {
-        // Add new comment to the top of the list
-        setComments((prev) => [response.comment!, ...prev]);
+        // Normalize comment to ensure avatar is always string | null
+        const normalizedComment = normalizeComment(response.comment);
+        setComments((prev) => [normalizedComment, ...prev]);
         setCommentText('');
       } else {
         Alert.alert('Error', response.error || 'Failed to post comment. Please try again.');
@@ -162,10 +179,11 @@ export default function CommentSection({ articleId }: CommentSectionProps) {
       const response = await apiClient.updateComment(editingCommentId, trimmedContent);
 
       if (response.success && response.comment) {
-        // Update comment in the list
+        // Normalize comment to ensure avatar is always string | null
+        const normalizedComment = normalizeComment(response.comment);
         setComments((prev) =>
           prev.map((c) =>
-            c.comment_id === editingCommentId ? response.comment! : c
+            c.comment_id === editingCommentId ? normalizedComment : c
           )
         );
         setEditingCommentId(null);
@@ -217,6 +235,10 @@ export default function CommentSection({ articleId }: CommentSectionProps) {
 
   // Get author display name
   const getAuthorName = (comment: Comment) => {
+    if (!comment.author) {
+      return 'Anonymous';
+    }
+    // Prefer display name, fallback to username
     return comment.author.name || comment.author.username || 'Anonymous';
   };
 
@@ -226,10 +248,21 @@ export default function CommentSection({ articleId }: CommentSectionProps) {
     return name.charAt(0).toUpperCase();
   };
 
-  // Check if user owns comment
+  // Check if user owns comment (using username matching)
   const isCommentOwner = (comment: Comment) => {
-    if (!user) return false;
-    return comment.user_id === user.id;
+    if (!user || !comment.author?.username) {
+      return false;
+    }
+    
+    // Normalize usernames for comparison - handle @ prefix
+    const normalizeUsername = (username: string) => {
+      return username.replace(/^@+/, '').toLowerCase();
+    };
+    
+    const commentUsername = normalizeUsername(comment.author.username);
+    const userUsername = normalizeUsername(user.username || '');
+    
+    return commentUsername === userUsername;
   };
 
   if (loading) {
@@ -284,13 +317,61 @@ export default function CommentSection({ articleId }: CommentSectionProps) {
                   <View key={comment.comment_id} style={styles.commentCard}>
                     <View style={styles.commentHeader}>
                       <View style={styles.avatar}>
-                        {comment.author.avatar ? (
-                          <Text style={styles.avatarText}>IMG</Text>
-                        ) : (
-                          <Text style={styles.avatarText}>
-                            {getAuthorInitial(comment)}
-                          </Text>
-                        )}
+                        {(() => {
+                          // Use converted URL if available, otherwise use original
+                          const originalAvatarUri = comment.author?.avatar;
+                          const convertedAvatarUri = avatarUrls[comment.comment_id];
+                          const avatarUri = convertedAvatarUri || originalAvatarUri;
+                          
+                          // Only render Image if we have a valid non-empty URL
+                          if (avatarUri && typeof avatarUri === 'string' && avatarUri.trim().length > 0 && avatarUri.startsWith('http')) {
+                            return (
+                              <Image
+                                source={{ uri: avatarUri }}
+                                style={styles.avatarImage}
+                                resizeMode="cover"
+                                onError={async (error) => {
+                                  const errorMessage = error.nativeEvent?.error || '';
+                                  
+                                  // If we get a 403 Forbidden, try to get a presigned URL
+                                  if ((errorMessage.includes('403') || errorMessage.includes('Forbidden')) && !convertedAvatarUri) {
+                                    // Extract S3 key from the URL
+                                    let s3Key: string | null = null;
+                                    if (originalAvatarUri && typeof originalAvatarUri === 'string') {
+                                      // Try to extract S3 key from URL
+                                      const urlMatch = originalAvatarUri.match(/profile-pictures\/[^?]+/);
+                                      if (urlMatch) {
+                                        s3Key = urlMatch[0];
+                                      } else if (!originalAvatarUri.startsWith('http')) {
+                                        // It's already an S3 key
+                                        s3Key = originalAvatarUri;
+                                      }
+                                    }
+                                    
+                                    if (s3Key) {
+                                      try {
+                                        const urlResult = await apiClient.getProfilePictureUrl(s3Key);
+                                        if (urlResult.success && urlResult.url) {
+                                          // Store the converted URL
+                                          setAvatarUrls(prev => ({
+                                            ...prev,
+                                            [comment.comment_id]: urlResult.url!,
+                                          }));
+                                        }
+                                      } catch (err: any) {
+                                        // Silently fail - will show placeholder
+                                      }
+                                    }
+                                  }
+                                }}
+                              />
+                            );
+                          }
+                          // Show placeholder if no valid avatar URL
+                          return (
+                            <MaterialIcons name="person" size={24} color="#fff" />
+                          );
+                        })()}
                       </View>
                       <View style={styles.commentMeta}>
                         <Text style={styles.commentAuthor}>
@@ -493,6 +574,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
+    overflow: 'hidden',
+  },
+  avatarImage: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
   },
   avatarText: {
     color: '#fff',

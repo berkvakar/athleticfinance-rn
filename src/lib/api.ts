@@ -260,12 +260,41 @@ class ApiClient {
       logger.log('[API] getUserProfile: Response received');
       
       // Handle profile picture - convert S3 key to URL if needed
+      // Handle both nested (response.profile) and flat (response) structures
       const profile = response.profile || response;
-      if (profile?.profilePicUrl && !profile.profilePicUrl.startsWith('http')) {
+      
+      // Helper function to convert S3 key to URL
+      const convertProfilePicUrl = async (picUrl: string): Promise<string | null> => {
+        if (!picUrl || picUrl.startsWith('http')) {
+          return picUrl; // Already a URL or empty
+        }
+        
         // It's an S3 key, not a URL - fetch the presigned URL
-        const urlResult = await this.getProfilePictureUrl(profile.profilePicUrl);
-        if (urlResult.success && urlResult.url) {
-          profile.profilePicUrl = urlResult.url;
+        logger.log('[API] getUserProfile: Converting S3 key to URL:', picUrl);
+        try {
+          const urlResult = await this.getProfilePictureUrl(picUrl);
+          if (urlResult.success && urlResult.url) {
+            logger.log('[API] getUserProfile: Successfully converted S3 key to URL');
+            return urlResult.url;
+          } else {
+            logger.warn('[API] getUserProfile: Failed to convert S3 key:', urlResult.error);
+            return null;
+          }
+        } catch (error: any) {
+          logger.error('[API] getUserProfile: Error converting S3 key to URL:', error);
+          return null;
+        }
+      };
+      
+      // Convert profilePicUrl if it exists and is an S3 key
+      if (profile?.profilePicUrl) {
+        const convertedUrl = await convertProfilePicUrl(profile.profilePicUrl);
+        if (convertedUrl) {
+          profile.profilePicUrl = convertedUrl;
+        } else {
+          // If conversion failed, set to null to avoid showing black image
+          logger.warn('[API] getUserProfile: Setting profilePicUrl to null due to conversion failure');
+          profile.profilePicUrl = null;
         }
       }
       
@@ -358,15 +387,15 @@ class ApiClient {
     comments?: Array<{
       comment_id: string;
       article_id: string;
-      user_id: string;
       content: string;
       createdAt: string;
       updatedAt: string;
       isDeleted: boolean;
+      parentCommentId?: string;
       author: {
-        username: string;
-        name?: string;
-        avatar?: string;
+        username: string; // Public username (e.g., "@john_doe")
+        name?: string; // Display name (optional)
+        avatar: string | null; // Full S3 public URL or null (ready to use)
       };
     }>;
     count?: number;
@@ -423,15 +452,15 @@ class ApiClient {
     comment?: {
       comment_id: string;
       article_id: string;
-      user_id: string;
       content: string;
       createdAt: string;
       updatedAt: string;
       isDeleted: boolean;
+      parentCommentId?: string;
       author: {
-        username: string;
-        name?: string;
-        avatar?: string;
+        username: string; // Public username (e.g., "@john_doe")
+        name?: string; // Display name (optional)
+        avatar: string | null; // Full S3 public URL or null (ready to use)
       };
     };
     error?: string;
@@ -474,15 +503,15 @@ class ApiClient {
     comment?: {
       comment_id: string;
       article_id: string;
-      user_id: string;
       content: string;
       createdAt: string;
       updatedAt: string;
       isDeleted: boolean;
+      parentCommentId?: string;
       author: {
-        username: string;
-        name?: string;
-        avatar?: string;
+        username: string; // Public username (e.g., "@john_doe")
+        name?: string; // Display name (optional)
+        avatar: string | null; // Full S3 public URL or null (ready to use)
       };
     };
     error?: string;
@@ -542,6 +571,63 @@ class ApiClient {
       return {
         success: false,
         error: error?.message || 'Failed to delete comment',
+      };
+    }
+  }
+
+  // ========== BATCH USERS API ==========
+
+  // Batch fetch user profiles (efficient for fetching multiple users)
+  async batchFetchUsers(userIds: string[]): Promise<{
+    success: boolean;
+    users?: Array<{
+      userId: string;
+      username: string;
+      name?: string;
+      avatar?: string | null;
+      description?: string;
+      createdAt?: string;
+      updatedAt?: string;
+    }>;
+    count?: number;
+    error?: string;
+  }> {
+    try {
+      if (!userIds || userIds.length === 0) {
+        return {
+          success: false,
+          error: 'User IDs are required',
+        };
+      }
+
+      if (userIds.length > 100) {
+        return {
+          success: false,
+          error: 'Maximum 100 user IDs allowed per request',
+        };
+      }
+
+      const endpoint = `/api/users/batch`;
+      const response = await this.request<any>(endpoint, {
+        method: 'POST',
+        body: { userIds },
+      });
+
+      return {
+        success: true,
+        users: response.users || [],
+        count: response.count || 0,
+      };
+    } catch (error: any) {
+      logger.error('[API] batchFetchUsers error:', {
+        message: error?.message,
+        stack: error?.stack,
+        status: error?.status,
+        url: error?.url,
+      });
+      return {
+        success: false,
+        error: error?.message || 'Failed to fetch users',
       };
     }
   }

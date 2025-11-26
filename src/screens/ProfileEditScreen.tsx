@@ -59,36 +59,15 @@ export default function ProfileEditScreen() {
   const zoomOpacity = useRef(new Animated.Value(0)).current;
 
   // Sync preview with user avatar when user data updates (after refresh)
-  // Handle S3 keys by converting them to URLs
+  // Avatar is already a full URL or null (no S3 key conversion needed)
   // Only sync if we don't have a selected image (to preserve local selection)
   useEffect(() => {
     if (!selectedImage) {
-      if (user?.avatar) {
-        // Check if it's an S3 key (doesn't start with http) or already a URL
-        if (!user.avatar.startsWith('http')) {
-          // It's an S3 key - convert to URL
-          console.log('[PROFILE EDIT] Avatar is S3 key, fetching URL:', user.avatar);
-          const { apiClient } = require('../lib/api');
-          apiClient.getProfilePictureUrl(user.avatar)
-            .then((result: { success: boolean; url?: string; error?: string }) => {
-              if (result.success && result.url) {
-                console.log('[PROFILE EDIT] Got URL from S3 key:', result.url);
-                setPreviewImageUri(result.url);
-              } else {
-                console.warn('[PROFILE EDIT] Failed to get URL for S3 key:', user.avatar);
-                setPreviewImageUri(null);
-              }
-            })
-            .catch((error: any) => {
-              console.error('[PROFILE EDIT] Error fetching URL for S3 key:', error);
-              setPreviewImageUri(null);
-            });
-        } else {
-          // It's already a URL
-          console.log('[PROFILE EDIT] Setting previewImageUri to URL:', user.avatar);
-          setPreviewImageUri(user.avatar);
-        }
+      if (user?.avatar && typeof user.avatar === 'string' && user.avatar.trim().length > 0 && user.avatar.startsWith('http')) {
+        // Avatar is already a full URL, ready to use
+        setPreviewImageUri(user.avatar);
       } else {
+        // Clear preview if avatar is null/undefined/empty/invalid
         setPreviewImageUri(null);
       }
     }
@@ -310,13 +289,28 @@ export default function ProfileEditScreen() {
                 onPress={handleProfilePicturePress}
                 disabled={saving}
               >
-                {previewImageUri ? (
-                  <Image source={{ uri: previewImageUri }} style={styles.profilePicture} />
-                ) : (
-                  <View style={styles.profilePicturePlaceholder}>
-                    <MaterialIcons name="person" size={60} color="#9CA3AF" />
-                  </View>
-                )}
+                {(() => {
+                  // Only render Image if we have a valid non-empty URL
+                  if (previewImageUri && typeof previewImageUri === 'string' && previewImageUri.trim().length > 0 && previewImageUri.startsWith('http')) {
+                    return (
+                      <Image 
+                        source={{ uri: previewImageUri }} 
+                        style={styles.profilePicture}
+                        onError={(error) => {
+                          console.error('[PROFILE EDIT] Image load error:', error);
+                          // If image fails to load, show placeholder
+                          setPreviewImageUri(null);
+                        }}
+                      />
+                    );
+                  }
+                  // Show placeholder if no valid avatar URL
+                  return (
+                    <View style={styles.profilePicturePlaceholder}>
+                      <MaterialIcons name="person" size={60} color="#9CA3AF" />
+                    </View>
+                  );
+                })()}
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.editPhotoButton}
