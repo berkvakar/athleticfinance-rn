@@ -403,16 +403,25 @@ export default function AuthScreen() {
         setFormData({ ...formData, password: '' });
       }
     } catch (error: any) {
-      logger.error('[AUTH] handleSubmit: Error during signup process');
+      // Check if it's a username conflict error (we use these errors to check username availability)
+      const errorMessage = error.message || '';
+      const isUsernameConflict = errorMessage.includes('already exists') || 
+          errorMessage.includes('already taken') || 
+          errorMessage.includes('UsernameExistsException') ||
+          errorMessage.includes('username') ||
+          errorMessage.includes('User already exists');
+      
+      // Only log errors that are NOT username conflicts
+      if (!isUsernameConflict) {
+        logger.error('[AUTH] handleSubmit: Error during signup process');
+      }
+      
       setIsCheckingEmail(false);
       
       // SECURITY: Clear password on error
       setFormData({ ...formData, password: '' });
       
-      if (error.message.includes('already exists') || 
-          error.message.includes('already taken') || 
-          error.message.includes('UsernameExistsException') ||
-          error.message.includes('username')) {
+      if (isUsernameConflict) {
         setUsernameError('This username is already taken. Please choose another.');
       }
       setIsLoading(false);
@@ -775,15 +784,6 @@ export default function AuthScreen() {
               ) : (
                 <Text style={styles.submitButtonText}>Create Account</Text>
               )}
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.switchButton}
-              onPress={() => navigation.navigate('SignIn')}
-            >
-              <Text style={styles.switchText}>
-                Already have an account? <Text style={styles.switchLink}>Sign in</Text>
-              </Text>
             </TouchableOpacity>
           </View>
         </View>

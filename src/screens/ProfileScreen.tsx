@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -21,6 +21,8 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useAuth } from '../contexts/AuthContext';
 import type { SavedItem } from '../contexts/AuthContext';
 import Layout from '../components/Layout';
+import { apiClient } from '../lib/api';
+import { useArticleList } from '../hooks/useArticleList';
 import type { RootStackParamList } from '../navigation/AppNavigator';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -34,20 +36,46 @@ interface Comment {
   replyTo?: string;
 }
 
+interface Article {
+  id: number;
+  title: string;
+  hero_image_id: number | null;
+  content: {
+    root: {
+      children: any[];
+    };
+  };
+  published_at: string;
+  slug: string;
+  imageUrl?: string;
+}
+
 type TabType = 'comments' | 'saved' | 'statistics';
 
 export default function ProfileScreen() {
   const navigation = useNavigation<NavigationProp>();
-  const { user, savedItems, loading: authLoading, profileLoading, refreshProfile } = useAuth();
+  const { user, savedItems, loading: authLoading, profileLoading, refreshProfile, savedArticleIds, refreshSavedArticles } = useAuth();
   const [profileImage, setProfileImage] = useState<string | null>(null);
   const [bio, setBio] = useState(user?.bio || '');
   const [memberNumber, setMemberNumber] = useState<string>('');
   const [profileUsername, setProfileUsername] = useState<string | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
+  const [savedArticles, setSavedArticles] = useState<Article[]>([]);
+  const [statistics, setStatistics] = useState<{
+    articlesRead: number;
+    streak: number;
+    commentsPosted: number;
+  } | null>(null);
+  const [loadingStatistics, setLoadingStatistics] = useState(false);
+  
+  const { renderArticle } = useArticleList(savedArticleIds);
+  const [loadingSavedArticles, setLoadingSavedArticles] = useState(false);
   const [loading, setLoading] = useState(true);
   const [isEditingBio, setIsEditingBio] = useState(false);
   const [activeTab, setActiveTab] = useState<TabType>('comments');
-  const [refreshing, setRefreshing] = useState(false);
+  const [refreshingComments, setRefreshingComments] = useState(false);
+  const [refreshingSaved, setRefreshingSaved] = useState(false);
+  const [refreshingStatistics, setRefreshingStatistics] = useState(false);
   const [tabPositions, setTabPositions] = useState<{ [key: string]: number }>({
     comments: 0,
     saved: 0,
@@ -58,11 +86,18 @@ export default function ProfileScreen() {
   const screenWidth = Dimensions.get('window').width;
   const tabWidth = screenWidth / 3;
   const hasLoadedProfile = useRef(false);
+  const hasLoadedSavedArticles = useRef(false);
+  const hasLoadedStatistics = useRef(false);
   
   // Profile picture zoom modal
   const [isZoomed, setIsZoomed] = useState(false);
   const zoomScale = useRef(new Animated.Value(0)).current;
   const zoomOpacity = useRef(new Animated.Value(0)).current;
+  
+  // Animated values for statistics
+  const articlesReadAnim = useRef(new Animated.Value(0)).current;
+  const streakAnim = useRef(new Animated.Value(0)).current;
+  const commentsPostedAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     // Wait for auth and profile to finish loading before trying to load profile
@@ -103,23 +138,51 @@ export default function ProfileScreen() {
     }
   }, [user?.avatar]);
 
-  // Handle pull-to-refresh
-  const onRefresh = async () => {
+  // Handle pull-to-refresh for comments tab
+  const onRefreshComments = async () => {
     if (!user) return;
     
     try {
-      setRefreshing(true);
-      console.log('[PROFILE SCREEN] Refreshing profile data from DynamoDB...');
-      
-      // Call refreshProfile to fetch latest data from backend/DynamoDB
+      setRefreshingComments(true);
       await refreshProfile();
-      
-      console.log('[PROFILE SCREEN] Profile refresh completed');
+      // TODO: Load comments if needed
     } catch (error: any) {
-      console.error('[PROFILE SCREEN] Error refreshing profile:', error);
-      Alert.alert('Error', 'Failed to refresh profile. Please try again.');
+      console.error('[PROFILE SCREEN] Error refreshing comments:', error);
     } finally {
-      setRefreshing(false);
+      setRefreshingComments(false);
+    }
+  };
+
+  // Handle pull-to-refresh for saved tab
+  const onRefreshSaved = async () => {
+    if (!user) return;
+    
+    try {
+      setRefreshingSaved(true);
+      await refreshProfile();
+      hasLoadedSavedArticles.current = false;
+      await refreshSavedArticles();
+      await loadSavedArticles();
+    } catch (error: any) {
+      console.error('[PROFILE SCREEN] Error refreshing saved articles:', error);
+    } finally {
+      setRefreshingSaved(false);
+    }
+  };
+
+  // Handle pull-to-refresh for statistics tab
+  const onRefreshStatistics = async () => {
+    if (!user) return;
+    
+    try {
+      setRefreshingStatistics(true);
+      await refreshProfile();
+      hasLoadedStatistics.current = false;
+      await loadStatistics();
+    } catch (error: any) {
+      console.error('[PROFILE SCREEN] Error refreshing statistics:', error);
+    } finally {
+      setRefreshingStatistics(false);
     }
   };
 
@@ -270,7 +333,39 @@ export default function ProfileScreen() {
       tension: 40,
       friction: 10,
     }).start();
+
+    // Load saved articles when switching to saved tab (only if not already loaded)
+    if (tab === 'saved' && !hasLoadedSavedArticles.current && !loadingSavedArticles) {
+      loadSavedArticles();
+    }
+    
+    // Load statistics when switching to statistics tab (only if not already loaded)
+    if (tab === 'statistics' && !hasLoadedStatistics.current && !loadingStatistics) {
+      loadStatistics();
+    }
   };
+
+  const loadSavedArticles = useCallback(async () => {
+    if (!user || loadingSavedArticles) return;
+    
+    try {
+      setLoadingSavedArticles(true);
+      const result = await apiClient.getSavedArticles();
+      if (result.success && result.articles) {
+        setSavedArticles(result.articles);
+        hasLoadedSavedArticles.current = true;
+      } else {
+        setSavedArticles([]);
+        hasLoadedSavedArticles.current = true;
+      }
+    } catch (error) {
+      console.error('Error loading saved articles:', error);
+      setSavedArticles([]);
+      hasLoadedSavedArticles.current = true;
+    } finally {
+      setLoadingSavedArticles(false);
+    }
+  }, [user, loadingSavedArticles]);
 
   useEffect(() => {
     // Initialize indicator position for 'comments' tab once layout is measured
@@ -278,6 +373,92 @@ export default function ProfileScreen() {
       indicatorPosition.setValue(tabPositions.comments);
     }
   }, [tabPositions.comments, activeTab]);
+
+  // Load saved articles when saved tab becomes active (only once)
+  useEffect(() => {
+    if (activeTab === 'saved' && user && !hasLoadedSavedArticles.current && !loadingSavedArticles) {
+      loadSavedArticles();
+    }
+  }, [activeTab, user, loadSavedArticles]);
+  
+  // Load statistics when statistics tab becomes active (only once)
+  useEffect(() => {
+    if (activeTab === 'statistics' && user && !hasLoadedStatistics.current && !loadingStatistics) {
+      loadStatistics();
+    }
+  }, [activeTab, user]);
+  
+  const loadStatistics = useCallback(async () => {
+    if (!user || loadingStatistics) return;
+    
+    try {
+      setLoadingStatistics(true);
+      const result = await apiClient.getUserProfile();
+      if (result.success && result.profile?.statistics) {
+        const stats = result.profile.statistics;
+        const articlesRead = stats.articlesRead || 0;
+        const streak = stats.streak || 0;
+        const commentsPosted = stats.commentsPosted || 0;
+        
+        setStatistics({
+          articlesRead,
+          streak,
+          commentsPosted,
+        });
+        hasLoadedStatistics.current = true;
+        
+        // Reset animated values to 0 before animating
+        articlesReadAnim.setValue(0);
+        streakAnim.setValue(0);
+        commentsPostedAnim.setValue(0);
+        
+        // Animate the numbers with a slight delay for visual effect
+        Animated.parallel([
+          Animated.timing(articlesReadAnim, {
+            toValue: articlesRead,
+            duration: 1500,
+            useNativeDriver: false,
+          }),
+          Animated.timing(streakAnim, {
+            toValue: streak,
+            duration: 1500,
+            delay: 100,
+            useNativeDriver: false,
+          }),
+          Animated.timing(commentsPostedAnim, {
+            toValue: commentsPosted,
+            duration: 1500,
+            delay: 200,
+            useNativeDriver: false,
+          }),
+        ]).start();
+      } else {
+        // Default to 0 if no statistics found
+        setStatistics({
+          articlesRead: 0,
+          streak: 0,
+          commentsPosted: 0,
+        });
+        articlesReadAnim.setValue(0);
+        streakAnim.setValue(0);
+        commentsPostedAnim.setValue(0);
+        hasLoadedStatistics.current = true;
+      }
+    } catch (error) {
+      console.error('Error loading statistics:', error);
+      setStatistics({
+        articlesRead: 0,
+        streak: 0,
+        commentsPosted: 0,
+      });
+      articlesReadAnim.setValue(0);
+      streakAnim.setValue(0);
+      commentsPostedAnim.setValue(0);
+      hasLoadedStatistics.current = true;
+    } finally {
+      setLoadingStatistics(false);
+    }
+  }, [user, loadingStatistics, articlesReadAnim, streakAnim, commentsPostedAnim]);
 
   const renderComment = ({ item }: { item: Comment }) => (
     <View style={styles.commentCard}>
@@ -289,27 +470,21 @@ export default function ProfileScreen() {
     </View>
   );
 
-  const renderSavedItem = ({ item }: { item: SavedItem }) => (
-    <View style={styles.savedItemCard}>
-      <View style={styles.savedItemHeader}>
-        <MaterialIcons 
-          name={item.type === 'article' ? 'article' : 'comment'} 
-          size={16} 
-          color="#999" 
-        />
-        <Text style={styles.savedItemType}>
-          {item.type === 'article' ? 'Article' : 'Comment'}
-        </Text>
-      </View>
-      {item.title && (
-        <Text style={styles.savedItemTitle}>{item.title}</Text>
-      )}
-      <Text style={styles.savedItemContent} numberOfLines={2}>
-        {item.content}
-      </Text>
-      <Text style={styles.savedItemDate}>{formatDate(item.timestamp)}</Text>
-    </View>
-  );
+  // Animated number component
+  const AnimatedNumber = ({ value, style }: { value: Animated.Value; style?: any }) => {
+    const [displayValue, setDisplayValue] = useState(0);
+    
+    useEffect(() => {
+      const id = value.addListener(({ value: v }) => {
+        setDisplayValue(Math.floor(v));
+      });
+      return () => {
+        value.removeListener(id);
+      };
+    }, [value]);
+    
+    return <Text style={style}>{displayValue.toLocaleString()}</Text>;
+  };
 
   // Show loading if auth is still loading, profile is loading, or local profile is loading
   if (authLoading || profileLoading || loading) {
@@ -338,22 +513,7 @@ export default function ProfileScreen() {
         </TouchableOpacity>
       }
     >
-      <ScrollView
-        style={styles.container}
-        contentContainerStyle={styles.contentContainer}
-        showsVerticalScrollIndicator={false}
-        bounces={true}
-        overScrollMode="auto"
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor="#000"
-            colors={['#000']}
-            progressViewOffset={0}
-          />
-        }
-      >
+      <View style={styles.container}>
         {/* Profile Header - Instagram Style */}
         <View style={styles.profileHeader}>
           {/* Profile Picture */}
@@ -477,18 +637,32 @@ export default function ProfileScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* Tab Content */}
+          {/* Tab Content - Each tab has its own ScrollView with RefreshControl */}
           <View style={styles.tabContent}>
             {activeTab === 'comments' && (
-              <>
-                {comments.length > 0 ? (
-                  <FlatList
-                    data={comments}
-                    renderItem={renderComment}
-                    keyExtractor={(item) => item.id}
-                    scrollEnabled={false}
-                    contentContainerStyle={styles.commentsList}
+              <ScrollView
+                style={styles.tabScrollView}
+                contentContainerStyle={styles.tabScrollContent}
+                showsVerticalScrollIndicator={false}
+                refreshControl={
+                  <RefreshControl
+                    refreshing={refreshingComments}
+                    onRefresh={onRefreshComments}
                   />
+                }
+              >
+                {comments.length > 0 ? (
+                  <View style={styles.commentsList}>
+                    {comments.map((item) => (
+                      <View key={item.id} style={styles.commentCard}>
+                        {item.articleTitle && (
+                          <Text style={styles.commentArticleTitle}>Replied to: {item.articleTitle}</Text>
+                        )}
+                        <Text style={styles.commentText}>{item.text}</Text>
+                        <Text style={styles.commentDate}>{formatDate(item.timestamp)}</Text>
+                      </View>
+                    ))}
+                  </View>
                 ) : (
                   <View style={styles.emptyStateContainer}>
                     <View style={styles.emptyState}>
@@ -500,47 +674,136 @@ export default function ProfileScreen() {
                     </View>
                   </View>
                 )}
-              </>
+              </ScrollView>
             )}
 
             {activeTab === 'saved' && (
-              <>
-                {savedItems.length > 0 ? (
-                  <FlatList
-                    data={savedItems}
-                    renderItem={renderSavedItem}
-                    keyExtractor={(item) => item.id}
-                    scrollEnabled={false}
-                    contentContainerStyle={styles.savedItemsList}
+              <ScrollView
+                style={styles.tabScrollView}
+                contentContainerStyle={styles.tabScrollContent}
+                showsVerticalScrollIndicator={false}
+                refreshControl={
+                  <RefreshControl
+                    refreshing={refreshingSaved}
+                    onRefresh={onRefreshSaved}
                   />
+                }
+              >
+                {loadingSavedArticles ? (
+                  <View style={styles.emptyStateContainer}>
+                    <ActivityIndicator size="large" color="#000" />
+                  </View>
+                ) : savedArticles.length > 0 ? (
+                  <View style={styles.savedArticlesList}>
+                    {savedArticles.map((item) => renderArticle({ item }))}
+                  </View>
                 ) : (
                   <View style={styles.emptyStateContainer}>
                     <View style={styles.emptyState}>
                       <MaterialIcons name="bookmark" size={48} color="#999" />
-                      <Text style={styles.emptyStateText}>No saved items yet</Text>
+                      <Text style={styles.emptyStateText}>No saved articles yet</Text>
                       <Text style={styles.emptyStateSubtext}>
-                        Items you save will appear here
+                        Articles you bookmark will appear here
                       </Text>
                     </View>
                   </View>
                 )}
-              </>
+              </ScrollView>
             )}
 
             {activeTab === 'statistics' && (
-              <View style={styles.emptyStateContainer}>
-                <View style={styles.emptyState}>
-                  <MaterialIcons name="bar-chart" size={48} color="#999" />
-                  <Text style={styles.emptyStateText}>Statistics</Text>
-                  <Text style={styles.emptyStateSubtext}>
-                    Your statistics will appear here
-                  </Text>
-                </View>
-              </View>
+              <ScrollView
+                style={styles.tabScrollView}
+                contentContainerStyle={styles.tabScrollContent}
+                showsVerticalScrollIndicator={false}
+                refreshControl={
+                  <RefreshControl
+                    refreshing={refreshingStatistics}
+                    onRefresh={onRefreshStatistics}
+                  />
+                }
+              >
+                {loadingStatistics ? (
+                  <View style={styles.emptyStateContainer}>
+                    <ActivityIndicator size="large" color="#000" />
+                  </View>
+                ) : (
+                  <View style={styles.statisticsContainer}>
+                    {/* Articles Read Card */}
+                    <Animated.View style={[styles.statCard, styles.statCardPrimary]}>
+                      <View style={styles.statIconContainer}>
+                        <MaterialIcons name="article" size={22} color="#6366F1" />
+                      </View>
+                      <AnimatedNumber value={articlesReadAnim} style={styles.statNumber} />
+                      <Text style={styles.statLabel}>Articles Read</Text>
+                      <View style={styles.statProgressBar}>
+                        <Animated.View 
+                          style={[
+                            styles.statProgressFill,
+                            {
+                              width: articlesReadAnim.interpolate({
+                                inputRange: [0, 100],
+                                outputRange: ['0%', '100%'],
+                                extrapolate: 'clamp',
+                              }),
+                            },
+                          ]}
+                        />
+                      </View>
+                    </Animated.View>
+
+                    {/* Streak Card */}
+                    <Animated.View style={[styles.statCard, styles.statCardStreak]}>
+                      <View style={styles.statIconContainer}>
+                        <MaterialIcons name="local-fire-department" size={22} color="#F59E0B" />
+                      </View>
+                      <AnimatedNumber value={streakAnim} style={styles.statNumber} />
+                      <Text style={styles.statLabel}>Day Streak</Text>
+                      <View style={styles.statProgressBar}>
+                        <Animated.View 
+                          style={[
+                            styles.statProgressFillStreak,
+                            {
+                              width: streakAnim.interpolate({
+                                inputRange: [0, 30],
+                                outputRange: ['0%', '100%'],
+                                extrapolate: 'clamp',
+                              }),
+                            },
+                          ]}
+                        />
+                      </View>
+                    </Animated.View>
+
+                    {/* Comments Posted Card */}
+                    <Animated.View style={[styles.statCard, styles.statCardComments]}>
+                      <View style={styles.statIconContainer}>
+                        <MaterialIcons name="comment" size={22} color="#10B981" />
+                      </View>
+                      <AnimatedNumber value={commentsPostedAnim} style={styles.statNumber} />
+                      <Text style={styles.statLabel}>Comments Posted</Text>
+                      <View style={styles.statProgressBar}>
+                        <Animated.View 
+                          style={[
+                            styles.statProgressFillComments,
+                            {
+                              width: commentsPostedAnim.interpolate({
+                                inputRange: [0, 50],
+                                outputRange: ['0%', '100%'],
+                                extrapolate: 'clamp',
+                              }),
+                            },
+                          ]}
+                        />
+                      </View>
+                    </Animated.View>
+                  </View>
+                )}
+              </ScrollView>
             )}
           </View>
         </View>
-      </ScrollView>
+      </View>
 
       {/* Profile Picture Zoom Modal */}
       <Modal
@@ -615,8 +878,12 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#fff',
   },
-  contentContainer: {
-    paddingBottom: 100,
+  tabScrollView: {
+    flex: 1,
+  },
+  tabScrollContent: {
+    flexGrow: 1,
+    paddingBottom: 20,
   },
   loadingContainer: {
     flex: 1,
@@ -813,6 +1080,7 @@ const styles = StyleSheet.create({
   },
   commentsList: {
     paddingTop: 16,
+    paddingBottom: 20,
   },
   commentCard: {
     paddingHorizontal: 16,
@@ -861,43 +1129,9 @@ const styles = StyleSheet.create({
     marginTop: 8,
     textAlign: 'center',
   },
-  savedItemsList: {
-    paddingTop: 16,
-  },
-  savedItemCard: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F5F5F5',
-  },
-  savedItemHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 8,
-  },
-  savedItemType: {
-    fontSize: 11,
-    color: '#999',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    fontWeight: '600',
-  },
-  savedItemTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#000',
-    marginBottom: 6,
-  },
-  savedItemContent: {
-    fontSize: 14,
-    color: '#666',
-    lineHeight: 20,
-    marginBottom: 8,
-  },
-  savedItemDate: {
-    fontSize: 12,
-    color: '#999',
+  savedArticlesList: {
+    paddingTop: 8,
+    paddingBottom: 20,
   },
   zoomModalOverlay: {
     flex: 1,
@@ -935,5 +1169,82 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 10,
+  },
+  statisticsContainer: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    gap: 12,
+  },
+  statCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 10,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+    borderWidth: 1,
+    borderColor: '#F0F0F0',
+  },
+  statCardPrimary: {
+    borderLeftWidth: 4,
+    borderLeftColor: '#6366F1',
+  },
+  statCardStreak: {
+    borderLeftWidth: 4,
+    borderLeftColor: '#F59E0B',
+  },
+  statCardComments: {
+    borderLeftWidth: 4,
+    borderLeftColor: '#10B981',
+  },
+  statIconContainer: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#F5F5F5',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  statNumber: {
+    fontSize: 26,
+    fontWeight: '700',
+    color: '#000',
+    marginBottom: 2,
+    letterSpacing: -0.5,
+  },
+  statLabel: {
+    fontSize: 11,
+    color: '#666',
+    fontWeight: '500',
+    marginBottom: 6,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  statProgressBar: {
+    height: 6,
+    backgroundColor: '#F0F0F0',
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  statProgressFill: {
+    height: '100%',
+    backgroundColor: '#6366F1',
+    borderRadius: 3,
+  },
+  statProgressFillStreak: {
+    height: '100%',
+    backgroundColor: '#F59E0B',
+    borderRadius: 3,
+  },
+  statProgressFillComments: {
+    height: '100%',
+    backgroundColor: '#10B981',
+    borderRadius: 3,
   },
 });

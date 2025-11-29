@@ -63,8 +63,8 @@ export default function ProfileEditScreen() {
   // Only sync if we don't have a selected image (to preserve local selection)
   useEffect(() => {
     if (!selectedImage) {
-      if (user?.avatar && typeof user.avatar === 'string' && user.avatar.trim().length > 0 && user.avatar.startsWith('http')) {
-        // Avatar is already a full URL, ready to use
+      if (user?.avatar && typeof user.avatar === 'string' && user.avatar.trim().length > 0 && (user.avatar.startsWith('http') || user.avatar.startsWith('file://'))) {
+        // Avatar is already a full URL or local file URI, ready to use
         setPreviewImageUri(user.avatar);
       } else {
         // Clear preview if avatar is null/undefined/empty/invalid
@@ -290,8 +290,8 @@ export default function ProfileEditScreen() {
                 disabled={saving}
               >
                 {(() => {
-                  // Only render Image if we have a valid non-empty URL
-                  if (previewImageUri && typeof previewImageUri === 'string' && previewImageUri.trim().length > 0 && previewImageUri.startsWith('http')) {
+                  // Only render Image if we have a valid non-empty URI (http:// or file://)
+                  if (previewImageUri && typeof previewImageUri === 'string' && previewImageUri.trim().length > 0 && (previewImageUri.startsWith('http') || previewImageUri.startsWith('file://'))) {
                     return (
                       <Image 
                         source={{ uri: previewImageUri }} 

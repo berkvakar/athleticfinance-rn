@@ -14,6 +14,7 @@ import { useAuth } from '../contexts/AuthContext';
 import Layout from '../components/Layout';
 import type { RootStackParamList } from '../navigation/AppNavigator';
 import { logger } from '../lib/logger';
+import { isAFPlusMember } from '../lib/planUtils';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -171,7 +172,7 @@ export default function SettingsScreen() {
               <View style={styles.divider} />
               
               {/* AF+ Notifications or Join AF+ Button */}
-              {user?.isPremium ? (
+              {isAFPlusMember(user?.plan) ? (
                 renderSettingRow(
                   'star',
                   'MaterialIcons',
@@ -180,8 +181,8 @@ export default function SettingsScreen() {
                   <Switch
                     value={afPlusNotifications}
                     onValueChange={setAfPlusNotifications}
-                    trackColor={{ false: '#E5E7EB', true: '#9CA3AF' }}
-                    thumbColor={afPlusNotifications ? '#374151' : '#F3F4F6'}
+                    trackColor={{ false: '#E5E7EB', true: '#F59E0B' }}
+                    thumbColor={afPlusNotifications ? '#fff' : '#F3F4F6'}
                     ios_backgroundColor="#E5E7EB"
                   />
                 )

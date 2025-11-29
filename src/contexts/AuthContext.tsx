@@ -10,6 +10,7 @@ interface User {
   name: string;
   username: string;
   isPremium: boolean;
+  plan?: string; // 'AF' or 'AF+' or 'AFPlus'
   avatar?: string;
   bio?: string;
   hideProfile?: boolean;
@@ -36,6 +37,10 @@ interface AuthContextType {
   savedItems: SavedItem[];
   saveItem: (item: SavedItem) => void;
   unsaveItem: (id: string) => void;
+  savedArticleIds: Set<number>; // Set of saved article IDs for quick lookup
+  bookmarkArticle: (articleId: number) => Promise<void>;
+  unbookmarkArticle: (articleId: number) => Promise<void>;
+  refreshSavedArticles: () => Promise<void>;
   updateProfile: (updates: Partial<User>) => Promise<void>;
   refreshProfile: () => Promise<void>;
 }
@@ -47,6 +52,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [profileLoading, setProfileLoading] = useState(false); // Track if profile is being fetched
   const [savedItems, setSavedItems] = useState<SavedItem[]>([]);
+  const [savedArticleIds, setSavedArticleIds] = useState<Set<number>>(new Set());
   const profileFetchedRef = useRef(false); // Track if profile has been fetched in background
   
   // SECURITY: Store username in encrypted SecureStore instead of plain AsyncStorage
@@ -177,11 +183,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         logger.log('[AUTH] loadUser: User authenticated');
         
         // Base user data from Cognito
+        // Extract plan from custom attribute if available, otherwise default to 'AF'
+        const planFromAttributes = (attributes['custom:plan'] || attributes.plan) as string | undefined;
         const userData: User = {
           id: currentUser.userId,
           email: email,
           name: attributes.name || '',
           username: usernameToUse,
+          plan: planFromAttributes || 'AF', // Default to 'AF' if not set
           isPremium: false, // Will be updated when profile is fetched
         };
         
@@ -201,12 +210,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             .then(() => {
               logger.log('[AUTH] loadUser: Profile fetch completed');
               setProfileLoading(false);
+              // Load saved articles after profile is loaded
+              refreshSavedArticles().catch((error) => {
+                logger.error('[AUTH] loadUser: Failed to load saved articles:', error);
+              });
             })
             .catch((error) => {
               logger.error('[AUTH] loadUser: Profile fetch failed:', error);
               profileFetchedRef.current = false; // Allow retry
               setProfileLoading(false);
             });
+        } else {
+          // If profile was already fetched, just load saved articles
+          refreshSavedArticles().catch((error) => {
+            logger.error('[AUTH] loadUser: Failed to load saved articles:', error);
+          });
         }
       } else {
         logger.log('[AUTH] loadUser: No valid session tokens, setting user to null');
@@ -403,19 +421,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           
           logger.log('[AUTH] login: Cognito tokens logged, fetching user profile from backend...');
           
-          // Get userId from token payload
-          const userId = (idToken?.payload as any)?.sub || (accessToken?.payload as any)?.sub;
-          
-          // Call /api/profile?userId= endpoint
-          if (userId) {
-            try {
-              logger.log('[AUTH] login: Calling /api/profile?userId=' + userId);
-              await apiClient.callProfileEndpoint(userId);
-              logger.log('[AUTH] login: Profile endpoint called successfully');
-            } catch (profileError: any) {
-              logger.warn('[AUTH] login: Error calling profile endpoint:', profileError);
-              // Continue with login even if profile endpoint call fails
-            }
+          // Call /api/profile endpoint to sync authenticated user
+          try {
+            const userId = (idToken?.payload as any)?.sub || (accessToken?.payload as any)?.sub;
+            logger.log(
+              `[AUTH] login: Calling /api/profile${userId ? ` for user ${userId}` : ''}`
+            );
+            await apiClient.callProfileEndpoint();
+            logger.log('[AUTH] login: Profile endpoint called successfully');
+          } catch (profileError: any) {
+            logger.warn('[AUTH] login: Error calling profile endpoint:', profileError);
+            // Continue with login even if profile endpoint call fails
           }
           
           logger.log('[AUTH] login: Loading user data...');
@@ -598,10 +614,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await signIn({ username: cognitoUsername, password });
         logger.log('[AUTH] signup: User signed in, calling profile endpoint...');
         
-        // Call /api/profile?userId= endpoint
+        // Call /api/profile endpoint
         try {
-          logger.log('[AUTH] signup: Calling /api/profile?userId=' + userId);
-          await apiClient.callProfileEndpoint(userId);
+          logger.log('[AUTH] signup: Calling /api/profile for authenticated user');
+          await apiClient.callProfileEndpoint();
           logger.log('[AUTH] signup: Profile endpoint called successfully');
         } catch (profileError: any) {
           logger.warn('[AUTH] signup: Error calling profile endpoint:', profileError);
@@ -629,13 +645,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         logger.log('[AUTH] signup: Signup and login completed successfully');
       }
     } catch (error: any) {
-      logger.error('[AUTH] signup: Error during signup:', error?.message || error);
-      
       // Check if it's a username conflict error from Cognito
       const errorMessage = error.message || '';
-      if (errorMessage.includes('UsernameExistsException') || 
+      const isUsernameConflict = errorMessage.includes('UsernameExistsException') || 
           errorMessage.includes('already exists') ||
-          errorMessage.includes('An account with the given username')) {
+          errorMessage.includes('An account with the given username') ||
+          errorMessage.includes('User already exists');
+      
+      // Only log errors that are NOT username conflicts (we use these errors to check username availability)
+      if (!isUsernameConflict) {
+        logger.error('[AUTH] signup: Error during signup:', error?.message || error);
+      }
+      
+      if (isUsernameConflict) {
         throw new Error('This username is already taken. Please choose another.');
       }
       
@@ -671,28 +693,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await signIn({ username, password });
         logger.log('[AUTH] confirmSignUp: User signed in, fetching user info...');
         
-        // Get userId from session tokens
-        let userId: string | null = null;
+        // Call /api/profile endpoint to sync authenticated user
         try {
-          const session = await fetchAuthSession({ forceRefresh: false });
-          const idToken = session.tokens?.idToken;
-          if (idToken) {
-            userId = (idToken.payload as any)?.sub || null;
-          }
-        } catch (error) {
-          logger.warn('[AUTH] confirmSignUp: Could not get userId from session');
-        }
-        
-        // Call /api/profile?userId= endpoint if userId is available
-        if (userId) {
+          let userId: string | null = null;
           try {
-            logger.log('[AUTH] confirmSignUp: Calling /api/profile?userId=' + userId);
-            await apiClient.callProfileEndpoint(userId);
-            logger.log('[AUTH] confirmSignUp: Profile endpoint called successfully');
-          } catch (profileError: any) {
-            logger.warn('[AUTH] confirmSignUp: Error calling profile endpoint:', profileError);
-            // Continue with confirmation even if profile endpoint call fails
+            const session = await fetchAuthSession({ forceRefresh: false });
+            const idToken = session.tokens?.idToken;
+            if (idToken) {
+              userId = (idToken.payload as any)?.sub || null;
+            }
+          } catch (error) {
+            logger.warn('[AUTH] confirmSignUp: Could not get userId from session');
           }
+          
+          logger.log(
+            `[AUTH] confirmSignUp: Calling /api/profile${userId ? ` for user ${userId}` : ''}`
+          );
+          await apiClient.callProfileEndpoint();
+          logger.log('[AUTH] confirmSignUp: Profile endpoint called successfully');
+        } catch (profileError: any) {
+          logger.warn('[AUTH] confirmSignUp: Error calling profile endpoint:', profileError);
+          // Continue with confirmation even if profile endpoint call fails
         }
         
         // Fetch user profile from backend using the new endpoint
@@ -781,6 +802,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Clear user state immediately
       setUser(null);
       setSavedItems([]);
+      setSavedArticleIds(new Set());
       
       // SECURITY: Clear SecureStore data for the current user if email exists
       if (userEmail) {
@@ -799,6 +821,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Even if signOut fails, clear local state
       setUser(null);
       setSavedItems([]);
+      setSavedArticleIds(new Set());
       
       // Still try to clear secure storage
       if (userEmail) {
@@ -827,6 +850,75 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const unsaveItem = (id: string) => {
     setSavedItems(savedItems.filter(item => item.id !== id));
+  };
+
+  // Refresh saved articles from the API
+  const refreshSavedArticles = async () => {
+    if (!user) {
+      setSavedArticleIds(new Set());
+      return;
+    }
+
+    try {
+      const result = await apiClient.getSavedArticles();
+      if (result.success && result.articles) {
+        const articleIds = new Set(result.articles.map(article => article.id));
+        setSavedArticleIds(articleIds);
+      } else {
+        setSavedArticleIds(new Set());
+      }
+    } catch (error) {
+      logger.error('[AUTH] refreshSavedArticles error:', error);
+      setSavedArticleIds(new Set());
+    }
+  };
+
+  // Bookmark an article
+  const bookmarkArticle = async (articleId: number) => {
+    if (!user) return;
+
+    try {
+      const result = await apiClient.bookmarkArticle(articleId);
+      if (result.success) {
+        // Optimistically update the state
+        setSavedArticleIds(prev => new Set([...prev, articleId]));
+        // Refresh from API to ensure consistency
+        await refreshSavedArticles();
+      } else {
+        throw new Error(result.error || 'Failed to bookmark article');
+      }
+    } catch (error: any) {
+      logger.error('[AUTH] bookmarkArticle error:', error);
+      // Revert optimistic update on error
+      await refreshSavedArticles();
+      throw error;
+    }
+  };
+
+  // Unbookmark an article
+  const unbookmarkArticle = async (articleId: number) => {
+    if (!user) return;
+
+    try {
+      const result = await apiClient.unbookmarkArticle(articleId);
+      if (result.success) {
+        // Optimistically update the state
+        setSavedArticleIds(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(articleId);
+          return newSet;
+        });
+        // Refresh from API to ensure consistency
+        await refreshSavedArticles();
+      } else {
+        throw new Error(result.error || 'Failed to unbookmark article');
+      }
+    } catch (error: any) {
+      logger.error('[AUTH] unbookmarkArticle error:', error);
+      // Revert optimistic update on error
+      await refreshSavedArticles();
+      throw error;
+    }
   };
 
   const refreshProfile = async (userOverride?: User) => {
@@ -935,6 +1027,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                   ? (actualProfile.username || profile.username) 
                   : `@${actualProfile.username || profile.username}`)
               : currentUser.username,
+            // Plan - API returns plan ('AF', 'AF+', 'AFPlus', etc.)
+            plan: userInfo?.plan || actualProfile.plan || profile.plan || 'AF',
             // Premium status - API returns plan ('AF' = free, anything else = premium)
             isPremium: (userInfo?.plan && userInfo.plan !== 'AF') || 
                       (actualProfile.plan && actualProfile.plan !== 'AF') ||
@@ -1020,6 +1114,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     savedItems,
     saveItem,
     unsaveItem,
+    savedArticleIds,
+    bookmarkArticle,
+    unbookmarkArticle,
+    refreshSavedArticles,
     updateProfile,
     refreshProfile,
   };

@@ -10,6 +10,7 @@ import {
   ScrollView,
   NativeScrollEvent,
   NativeSyntheticEvent,
+  RefreshControl,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -19,6 +20,7 @@ import Layout from '../components/Layout';
 import ParagraphBlock from '../components/ParagraphBlock';
 import CommentSection from '../components/CommentSection';
 import { parseToParagraphBlocks, ParagraphBlock as ParagraphBlockType } from '../lib/paragraphParser';
+import { useAuth } from '../contexts/AuthContext';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -48,8 +50,13 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 export default function ArticleDetailScreen({ route }: ArticleDetailScreenProps) {
   const navigation = useNavigation<NavigationProp>();
   const { article } = route.params;
+  const { user, savedArticleIds, bookmarkArticle, unbookmarkArticle } = useAuth();
   const scrollViewRef = useRef<ScrollView>(null);
   const [currentPage, setCurrentPage] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
+
+  // Check if current article is saved
+  const isSaved = savedArticleIds.has(article.id);
 
   // Parse content into paragraph blocks
   const paragraphBlocks = parseToParagraphBlocks(article.content);
@@ -63,8 +70,18 @@ export default function ArticleDetailScreen({ route }: ArticleDetailScreenProps)
     console.log('Share article:', article.id);
   };
 
-  const handleBookmark = () => {
-    console.log('Bookmark article:', article.id);
+  const handleBookmark = async () => {
+    if (!user) return;
+    
+    try {
+      if (isSaved) {
+        await unbookmarkArticle(article.id);
+      } else {
+        await bookmarkArticle(article.id);
+      }
+    } catch (error) {
+      console.error('Error toggling bookmark:', error);
+    }
   };
 
   const formatDate = (dateString: string) => {
@@ -93,6 +110,15 @@ export default function ArticleDetailScreen({ route }: ArticleDetailScreenProps)
       y: page * pageHeight,
       animated: true,
     });
+  };
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    // Refresh article data or reload comments
+    // You can add actual refresh logic here if needed
+    setTimeout(() => {
+      setRefreshing(false);
+    }, 1000);
   };
 
   // Title/Intro Page
@@ -163,7 +189,11 @@ export default function ArticleDetailScreen({ route }: ArticleDetailScreenProps)
             style={styles.headerButton}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
-            <MaterialIcons name="bookmark-border" size={24} color="#000" />
+            <MaterialIcons 
+              name={isSaved ? "bookmark" : "bookmark-border"} 
+              size={24} 
+              color="#000" 
+            />
           </TouchableOpacity>
         </View>
       }
@@ -192,6 +222,12 @@ export default function ArticleDetailScreen({ route }: ArticleDetailScreenProps)
           snapToInterval={SCREEN_HEIGHT}
           snapToAlignment="start"
           showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+            />
+          }
         >
           {/* Title Page */}
           <View key="title-page" style={styles.page}>

@@ -13,8 +13,8 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useAuth } from '../contexts/AuthContext';
 import Layout from '../components/Layout';
-import ArticleCard from '../components/ArticleCard';
 import { apiClient } from '../lib/api';
+import { useArticleList } from '../hooks/useArticleList';
 import type { RootStackParamList } from '../navigation/AppNavigator';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -34,8 +34,8 @@ interface Article {
 }
 
 export default function HomeScreen() {
-  const navigation = useNavigation<NavigationProp>();
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, savedArticleIds } = useAuth();
+  const { renderArticle } = useArticleList(savedArticleIds);
   const [articles, setArticles] = useState<Article[]>([]);
   const [loading, setLoading] = useState(false); // Start as false since there's no async work initially
   const [searchQuery, setSearchQuery] = useState('');
@@ -77,20 +77,6 @@ export default function HomeScreen() {
   const currentDate = displayArticles[0]?.published_at 
     ? new Date(displayArticles[0].published_at) 
     : new Date();
-
-  const handleArticlePress = useCallback((article: Article) => {
-    navigation.navigate('ArticleDetail', { article });
-  }, [navigation]);
-
-  const renderArticle = useCallback(({ item }: { item: Article }) => (
-    <ArticleCard 
-      id={item.id}
-      title={item.title}
-      hero_image_id={item.hero_image_id}
-      imageUrl={item.imageUrl}
-      onPress={() => handleArticlePress(item)} 
-    />
-  ), [handleArticlePress]);
 
   const renderEmptyState = () => (
     <View style={styles.emptyState}>

@@ -15,12 +15,14 @@ import { useAuth } from '../contexts/AuthContext';
 import Layout from '../components/Layout';
 import ArticleCard from '../components/ArticleCard';
 import { apiClient } from '../lib/api';
+import { isAFPlusMember } from '../lib/planUtils';
+import AFPlusLockedScreen from './AFPlusLockedScreen';
 import type { RootStackParamList } from '../navigation/AppNavigator';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 interface Article {
-  id: string;
+  id: number;
   title: string;
   excerpt: string;
   author: string;
@@ -43,6 +45,15 @@ export default function AFPlusScreen() {
   const [loading, setLoading] = useState(false); // Start as false since there's no async work initially
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+
+  // Check if user has AF+ plan - if not, show locked screen
+  // This check happens on every render to prevent manipulation
+  const hasAFPlus = isAFPlusMember(user?.plan);
+  
+  // Always check plan before rendering - if not AF+, show locked screen
+  if (!hasAFPlus) {
+    return <AFPlusLockedScreen />;
+  }
 
   useEffect(() => {
     loadArticles();
@@ -92,7 +103,7 @@ export default function AFPlusScreen() {
 
   const currentDate = displayArticles[0]?.date || new Date();
 
-  const handleArticlePress = useCallback((articleId: string) => {
+  const handleArticlePress = useCallback((articleId: number) => {
     // TODO: Navigate to article detail screen
     console.log('Navigate to article:', articleId);
   }, []);
@@ -162,7 +173,7 @@ export default function AFPlusScreen() {
           <FlatList
             data={displayArticles}
             renderItem={renderArticle}
-            keyExtractor={(item) => item.id}
+            keyExtractor={(item) => item.id.toString()}
             contentContainerStyle={styles.listContent}
             showsVerticalScrollIndicator={false}
             style={styles.flatList}

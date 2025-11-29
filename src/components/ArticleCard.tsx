@@ -9,6 +9,7 @@ import {
   Platform,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
+import { useAuth } from '../contexts/AuthContext';
 
 interface ArticleCardProps {
   id: number;
@@ -16,6 +17,7 @@ interface ArticleCardProps {
   hero_image_id?: number | null;
   imageUrl?: string;
   onPress?: () => void;
+  isSaved?: boolean;
 }
 
 export default function ArticleCard({
@@ -24,7 +26,15 @@ export default function ArticleCard({
   hero_image_id,
   imageUrl,
   onPress,
+  isSaved: isSavedProp,
 }: ArticleCardProps) {
+  const { savedArticleIds, bookmarkArticle, unbookmarkArticle, user } = useAuth();
+  
+  // Check if article is saved (use prop if provided, otherwise check context)
+  const isSaved = isSavedProp !== undefined 
+    ? isSavedProp 
+    : savedArticleIds.has(id);
+
   const handleShare = async (e: any) => {
     e?.stopPropagation?.();
     try {
@@ -43,9 +53,19 @@ export default function ArticleCard({
     }
   };
 
-  const handleBookmark = (e: any) => {
+  const handleBookmark = async (e: any) => {
     e?.stopPropagation?.();
-    console.log('Bookmark article:', id);
+    if (!user) return;
+    
+    try {
+      if (isSaved) {
+        await unbookmarkArticle(id);
+      } else {
+        await bookmarkArticle(id);
+      }
+    } catch (error) {
+      console.error('Error toggling bookmark:', error);
+    }
   };
 
   return (
@@ -102,7 +122,11 @@ export default function ArticleCard({
             style={styles.actionButton}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
-            <MaterialIcons name="bookmark-border" size={24} color="#000" />
+            <MaterialIcons 
+              name={isSaved ? "bookmark" : "bookmark-border"} 
+              size={24} 
+              color={isSaved ? "#000" : "#000"} 
+            />
           </TouchableOpacity>
         </View>
       </View>

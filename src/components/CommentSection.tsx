@@ -209,17 +209,24 @@ export default function CommentSection({ articleId }: CommentSectionProps) {
           style: 'destructive',
           onPress: async () => {
             try {
+              logger.log('[CommentSection] Attempting to delete comment:', commentId);
               const response = await apiClient.deleteComment(commentId);
 
               if (response.success) {
+                logger.log('[CommentSection] Comment deleted successfully');
                 // Remove comment from list
                 setComments((prev) => prev.filter((c) => c.comment_id !== commentId));
               } else {
+                logger.error('[CommentSection] Failed to delete comment:', response.error);
                 Alert.alert('Error', response.error || 'Failed to delete comment. Please try again.');
               }
             } catch (err: any) {
-              logger.error('[CommentSection] Error deleting comment:', err);
-              Alert.alert('Error', 'Failed to delete comment. Please try again.');
+              logger.error('[CommentSection] Error deleting comment:', {
+                error: err,
+                message: err?.message,
+                stack: err?.stack,
+              });
+              Alert.alert('Error', err?.message || 'Failed to delete comment. Please try again.');
             }
           },
         },

@@ -229,7 +229,7 @@ class ApiClient {
     }
   }
 
-  // Get user profile by extracting userId from JWT token
+  // Get the authenticated user's profile
   async getUserProfile(): Promise<{
     success: boolean;
     profile?: any;
@@ -254,9 +254,9 @@ class ApiClient {
         };
       }
       
-      const endpoint = `/api/profile?userId=${encodeURIComponent(userId)}`;
+      const endpoint = `/api/profile`;
       logger.log('[API] getUserProfile: Making request to:', endpoint);
-      const response = await this.request<any>(endpoint);
+      const response = await this.request<any>(endpoint, { method: 'GET' });
       logger.log('[API] getUserProfile: Response received');
       
       // Handle profile picture - convert S3 key to URL if needed
@@ -300,13 +300,13 @@ class ApiClient {
       
       // Return in a consistent format
       return {
-        success: true,
+        success: response.success ?? true,
         profile: profile,
         userInfo: response.userInfo || {
-          userId: userId,
-          email: response.email,
-          username: response.username,
-          plan: response.plan || 'AF',
+          userId,
+          email: profile.email || response.email,
+          username: profile.username || response.username,
+          plan: profile.plan || response.plan || 'AF',
         },
       };
     } catch (error: any) {
@@ -363,9 +363,9 @@ class ApiClient {
   }
 
   // Sync user profile after sign in/sign up (non-critical call)
-  async callProfileEndpoint(userId: string): Promise<any> {
+  async callProfileEndpoint(): Promise<any> {
     try {
-      return await this.request<any>(`/api/profile?userId=${encodeURIComponent(userId)}`);
+      return await this.request<any>(`/api/profile`, { method: 'GET' });
     } catch (error: any) {
       logger.error('[API] callProfileEndpoint error:', error?.message || error);
       return null;
@@ -552,9 +552,17 @@ class ApiClient {
     try {
       const endpoint = `/api/comments/${encodeURIComponent(commentId)}`;
       
-      await this.request<any>(endpoint, {
+      const response = await this.request<any>(endpoint, {
         method: 'DELETE',
       });
+
+      // Check if response indicates failure
+      if (response && response.success === false) {
+        return {
+          success: false,
+          error: response.error || response.message || 'Failed to delete comment',
+        };
+      }
 
       return {
         success: true,
@@ -628,6 +636,114 @@ class ApiClient {
       return {
         success: false,
         error: error?.message || 'Failed to fetch users',
+      };
+    }
+  }
+
+  // ========== BOOKMARKS API ==========
+
+  // Bookmark an article
+  async bookmarkArticle(articleId: string | number): Promise<{
+    success: boolean;
+    error?: string;
+  }> {
+    try {
+      const articleIdStr = String(articleId);
+      const endpoint = `/api/articles/${encodeURIComponent(articleIdStr)}/bookmark`;
+      
+      const response = await this.request<any>(endpoint, {
+        method: 'POST',
+        body: { articleId: articleIdStr },
+      });
+
+      return {
+        success: response.success ?? true,
+      };
+    } catch (error: any) {
+      logger.error('[API] bookmarkArticle error:', {
+        message: error?.message,
+        stack: error?.stack,
+        status: error?.status,
+        url: error?.url,
+      });
+      return {
+        success: false,
+        error: error?.message || 'Failed to bookmark article',
+      };
+    }
+  }
+
+  // Unbookmark an article
+  async unbookmarkArticle(articleId: string | number): Promise<{
+    success: boolean;
+    error?: string;
+  }> {
+    try {
+      const articleIdStr = String(articleId);
+      const endpoint = `/api/articles/${encodeURIComponent(articleIdStr)}/bookmark`;
+      
+      const response = await this.request<any>(endpoint, {
+        method: 'DELETE',
+      });
+
+      return {
+        success: response.success ?? true,
+      };
+    } catch (error: any) {
+      logger.error('[API] unbookmarkArticle error:', {
+        message: error?.message,
+        stack: error?.stack,
+        status: error?.status,
+        url: error?.url,
+      });
+      return {
+        success: false,
+        error: error?.message || 'Failed to unbookmark article',
+      };
+    }
+  }
+
+  // Get saved articles for the authenticated user
+  async getSavedArticles(): Promise<{
+    success: boolean;
+    articles?: Array<{
+      id: number;
+      title: string;
+      hero_image_id: number | null;
+      content: {
+        root: {
+          children: any[];
+        };
+      };
+      published_at: string;
+      slug: string;
+      imageUrl?: string;
+    }>;
+    count?: number;
+    error?: string;
+  }> {
+    try {
+      const endpoint = `/api/profile/saved-articles`;
+      const response = await this.request<any>(endpoint, {
+        method: 'GET',
+      });
+
+      return {
+        success: response.success ?? true,
+        articles: response.articles || [],
+        count: response.count || 0,
+      };
+    } catch (error: any) {
+      logger.error('[API] getSavedArticles error:', {
+        message: error?.message,
+        stack: error?.stack,
+        status: error?.status,
+        url: error?.url,
+      });
+      return {
+        success: false,
+        error: error?.message || 'Failed to fetch saved articles',
+        articles: [],
       };
     }
   }
