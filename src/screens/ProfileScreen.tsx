@@ -84,6 +84,7 @@ export default function ProfileScreen() {
   
   const indicatorPosition = useRef(new Animated.Value(0)).current;
   const screenWidth = Dimensions.get('window').width;
+  const screenHeight = Dimensions.get('window').height;
   const tabWidth = screenWidth / 3;
   const hasLoadedProfile = useRef(false);
   const hasLoadedSavedArticles = useRef(false);
@@ -138,53 +139,6 @@ export default function ProfileScreen() {
     }
   }, [user?.avatar]);
 
-  // Handle pull-to-refresh for comments tab
-  const onRefreshComments = async () => {
-    if (!user) return;
-    
-    try {
-      setRefreshingComments(true);
-      await refreshProfile();
-      // TODO: Load comments if needed
-    } catch (error: any) {
-      console.error('[PROFILE SCREEN] Error refreshing comments:', error);
-    } finally {
-      setRefreshingComments(false);
-    }
-  };
-
-  // Handle pull-to-refresh for saved tab
-  const onRefreshSaved = async () => {
-    if (!user) return;
-    
-    try {
-      setRefreshingSaved(true);
-      await refreshProfile();
-      hasLoadedSavedArticles.current = false;
-      await refreshSavedArticles();
-      await loadSavedArticles();
-    } catch (error: any) {
-      console.error('[PROFILE SCREEN] Error refreshing saved articles:', error);
-    } finally {
-      setRefreshingSaved(false);
-    }
-  };
-
-  // Handle pull-to-refresh for statistics tab
-  const onRefreshStatistics = async () => {
-    if (!user) return;
-    
-    try {
-      setRefreshingStatistics(true);
-      await refreshProfile();
-      hasLoadedStatistics.current = false;
-      await loadStatistics();
-    } catch (error: any) {
-      console.error('[PROFILE SCREEN] Error refreshing statistics:', error);
-    } finally {
-      setRefreshingStatistics(false);
-    }
-  };
 
   const loadProfileData = async () => {
     // Double check user exists and is authenticated
@@ -460,6 +414,54 @@ export default function ProfileScreen() {
     }
   }, [user, loadingStatistics, articlesReadAnim, streakAnim, commentsPostedAnim]);
 
+  // Handle pull-to-refresh for comments tab
+  const onRefreshComments = useCallback(async () => {
+    if (!user) return;
+    
+    try {
+      setRefreshingComments(true);
+      await refreshProfile();
+      // TODO: Load comments if needed
+    } catch (error: any) {
+      console.error('[PROFILE SCREEN] Error refreshing comments:', error);
+    } finally {
+      setRefreshingComments(false);
+    }
+  }, [user, refreshProfile]);
+
+  // Handle pull-to-refresh for saved tab
+  const onRefreshSaved = useCallback(async () => {
+    if (!user) return;
+    
+    try {
+      setRefreshingSaved(true);
+      await refreshProfile();
+      hasLoadedSavedArticles.current = false;
+      await refreshSavedArticles();
+      await loadSavedArticles();
+    } catch (error: any) {
+      console.error('[PROFILE SCREEN] Error refreshing saved articles:', error);
+    } finally {
+      setRefreshingSaved(false);
+    }
+  }, [user, refreshProfile, refreshSavedArticles, loadSavedArticles]);
+
+  // Handle pull-to-refresh for statistics tab
+  const onRefreshStatistics = useCallback(async () => {
+    if (!user) return;
+    
+    try {
+      setRefreshingStatistics(true);
+      await refreshProfile();
+      hasLoadedStatistics.current = false;
+      await loadStatistics();
+    } catch (error: any) {
+      console.error('[PROFILE SCREEN] Error refreshing statistics:', error);
+    } finally {
+      setRefreshingStatistics(false);
+    }
+  }, [user, refreshProfile, loadStatistics]);
+
   const renderComment = ({ item }: { item: Comment }) => (
     <View style={styles.commentCard}>
       {item.articleTitle && (
@@ -644,6 +646,8 @@ export default function ProfileScreen() {
                 style={styles.tabScrollView}
                 contentContainerStyle={styles.tabScrollContent}
                 showsVerticalScrollIndicator={false}
+                bounces={true}
+                alwaysBounceVertical={true}
                 refreshControl={
                   <RefreshControl
                     refreshing={refreshingComments}
@@ -682,6 +686,8 @@ export default function ProfileScreen() {
                 style={styles.tabScrollView}
                 contentContainerStyle={styles.tabScrollContent}
                 showsVerticalScrollIndicator={false}
+                bounces={true}
+                alwaysBounceVertical={true}
                 refreshControl={
                   <RefreshControl
                     refreshing={refreshingSaved}
@@ -695,7 +701,11 @@ export default function ProfileScreen() {
                   </View>
                 ) : savedArticles.length > 0 ? (
                   <View style={styles.savedArticlesList}>
-                    {savedArticles.map((item) => renderArticle({ item }))}
+                    {savedArticles.map((item) => (
+                      <React.Fragment key={item.id}>
+                        {renderArticle({ item })}
+                      </React.Fragment>
+                    ))}
                   </View>
                 ) : (
                   <View style={styles.emptyStateContainer}>
@@ -716,6 +726,8 @@ export default function ProfileScreen() {
                 style={styles.tabScrollView}
                 contentContainerStyle={styles.tabScrollContent}
                 showsVerticalScrollIndicator={false}
+                bounces={true}
+                alwaysBounceVertical={true}
                 refreshControl={
                   <RefreshControl
                     refreshing={refreshingStatistics}
@@ -1106,10 +1118,11 @@ const styles = StyleSheet.create({
     color: '#999',
   },
   emptyStateContainer: {
-    flex: 1,
+    flexGrow: 1,
     justifyContent: 'center',
     alignItems: 'center',
     paddingVertical: 40,
+    minHeight: Dimensions.get('window').height - 300,
   },
   emptyState: {
     alignItems: 'center',

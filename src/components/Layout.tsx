@@ -56,6 +56,8 @@ const styles = StyleSheet.create({
   },
   header: {
     backgroundColor: '#fff',
+    zIndex: 100,
+    position: 'relative',
   },
   headerContent: {
     flexDirection: 'row',
@@ -96,6 +98,7 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+    overflow: 'hidden',
   },
 });
 

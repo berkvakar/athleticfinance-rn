@@ -65,39 +65,108 @@ class ApiClient {
   // Get userId from current auth session
   private async getUserId(): Promise<string | null> {
     try {
-      const session = await fetchAuthSession({ forceRefresh: false });
-      const idToken = session.tokens?.idToken;
+      let session = await fetchAuthSession({ forceRefresh: false });
+      let idToken = session.tokens?.idToken;
+      
+      // Check if token is expired and refresh if needed
+      if (idToken) {
+        const payload = idToken.payload as any;
+        if (payload.exp) {
+          const expirationTime = payload.exp * 1000;
+          const now = Date.now();
+          if (expirationTime <= now) {
+            // Token expired, force refresh
+            session = await fetchAuthSession({ forceRefresh: true });
+            idToken = session.tokens?.idToken;
+          }
+        }
+      }
+      
       return (idToken?.payload as any)?.sub || null;
     } catch (error) {
-      return null;
+      // Try to force refresh as fallback
+      try {
+        const session = await fetchAuthSession({ forceRefresh: true });
+        const idToken = session.tokens?.idToken;
+        return (idToken?.payload as any)?.sub || null;
+      } catch {
+        return null;
+      }
     }
   }
 
   // Get authentication headers with JWT tokens
   private async getAuthHeaders(): Promise<Record<string, string>> {
     try {
-      const session = await fetchAuthSession({ forceRefresh: false });
+      // First try to get session without forcing refresh
+      let session = await fetchAuthSession({ forceRefresh: false });
       const idToken = session.tokens?.idToken;
       const accessToken = session.tokens?.accessToken;
+      
+      // Check if tokens are expired or about to expire (within 1 minute)
+      let needsRefresh = false;
+      if (idToken) {
+        const payload = idToken.payload as any;
+        if (payload.exp) {
+          const expirationTime = payload.exp * 1000; // Convert to milliseconds
+          const now = Date.now();
+          const oneMinute = 60 * 1000;
+          // Refresh if expired or expiring within 1 minute
+          if (expirationTime <= now + oneMinute) {
+            needsRefresh = true;
+            logger.log('[API] ID token expired or expiring soon, forcing refresh');
+          }
+        }
+      }
+      
+      // If token is expired, force refresh
+      if (needsRefresh) {
+        session = await fetchAuthSession({ forceRefresh: true });
+      }
+      
+      const refreshedIdToken = session.tokens?.idToken;
+      const refreshedAccessToken = session.tokens?.accessToken;
       
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
       };
       
-      if (idToken) {
-        headers['Authorization'] = `Bearer ${idToken.toString()}`;
+      if (refreshedIdToken) {
+        headers['Authorization'] = `Bearer ${refreshedIdToken.toString()}`;
       }
       
-      if (accessToken) {
-        headers['X-Access-Token'] = accessToken.toString();
+      if (refreshedAccessToken) {
+        headers['X-Access-Token'] = refreshedAccessToken.toString();
       }
       
       return headers;
     } catch (error) {
       logger.error('[API] Error fetching auth session:', error);
-      return {
-        'Content-Type': 'application/json',
-      };
+      // Try to force refresh as a last resort
+      try {
+        const session = await fetchAuthSession({ forceRefresh: true });
+        const idToken = session.tokens?.idToken;
+        const accessToken = session.tokens?.accessToken;
+        
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json',
+        };
+        
+        if (idToken) {
+          headers['Authorization'] = `Bearer ${idToken.toString()}`;
+        }
+        
+        if (accessToken) {
+          headers['X-Access-Token'] = accessToken.toString();
+        }
+        
+        return headers;
+      } catch (refreshError) {
+        logger.error('[API] Error forcing token refresh:', refreshError);
+        return {
+          'Content-Type': 'application/json',
+        };
+      }
     }
   }
 
@@ -362,6 +431,68 @@ class ApiClient {
     }
   }
 
+  // Get the most recent article (today's article)
+  async getRecentArticle(): Promise<{
+    success: boolean;
+    article?: any;
+    error?: string;
+  }> {
+    try {
+      const data = await this.requestWithoutAuth<any>(`/api/articles/recent`);
+      
+      if (data?.success && data?.article) {
+        return {
+          success: true,
+          article: data.article,
+        };
+      }
+      
+      return {
+        success: false,
+        error: data?.error || 'No articles found',
+      };
+    } catch (error: any) {
+      logger.error('[API] getRecentArticle error:', error?.message || error);
+      return {
+        success: false,
+        error: error?.message || 'Failed to fetch recent article',
+      };
+    }
+  }
+
+  // Get the next 6 most recent articles (excluding the most recent one)
+  async getRecentArticlesBatch(): Promise<{
+    success: boolean;
+    articles?: any[];
+    count?: number;
+    error?: string;
+  }> {
+    try {
+      const data = await this.requestWithoutAuth<any>(`/api/articles/recent-batch`);
+      
+      if (data?.success) {
+        return {
+          success: true,
+          articles: data.articles || [],
+          count: data.count || 0,
+        };
+      }
+      
+      return {
+        success: false,
+        error: data?.error || 'No articles found',
+        articles: [],
+      };
+    } catch (error: any) {
+      logger.error('[API] getRecentArticlesBatch error:', error?.message || error);
+      return {
+        success: false,
+        error: error?.message || 'Failed to fetch articles',
+        articles: [],
+      };
+    }
+  }
+
   // Sync user profile after sign in/sign up (non-critical call)
   async callProfileEndpoint(): Promise<any> {
     try {
@@ -463,6 +594,10 @@ class ApiClient {
         avatar: string | null; // Full S3 public URL or null (ready to use)
       };
     };
+    // When the user has reached their daily comment limit
+    limitReached?: boolean;
+    nextCommentAvailable?: string;
+    message?: string;
     error?: string;
   }> {
     try {
@@ -475,8 +610,13 @@ class ApiClient {
       });
 
       return {
-        success: true,
+        // Respect backend "success" flag if present, otherwise infer from presence of comment
+        success: response.success !== undefined ? response.success : !!response.comment,
         comment: response.comment,
+        limitReached: response.limitReached,
+        nextCommentAvailable: response.nextCommentAvailable,
+        message: response.message,
+        error: response.error,
       };
     } catch (error: any) {
       logger.error('[API] createComment error:', {

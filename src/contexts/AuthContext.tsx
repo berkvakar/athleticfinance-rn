@@ -210,21 +210,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             .then(() => {
               logger.log('[AUTH] loadUser: Profile fetch completed');
               setProfileLoading(false);
-              // Load saved articles after profile is loaded
-              refreshSavedArticles().catch((error) => {
-                logger.error('[AUTH] loadUser: Failed to load saved articles:', error);
-              });
+              // Saved article IDs are now extracted directly from profile in refreshProfile()
             })
             .catch((error) => {
               logger.error('[AUTH] loadUser: Profile fetch failed:', error);
               profileFetchedRef.current = false; // Allow retry
               setProfileLoading(false);
             });
-        } else {
-          // If profile was already fetched, just load saved articles
-          refreshSavedArticles().catch((error) => {
-            logger.error('[AUTH] loadUser: Failed to load saved articles:', error);
-          });
         }
       } else {
         logger.log('[AUTH] loadUser: No valid session tokens, setting user to null');
@@ -1004,6 +996,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             logger.error('[AUTH] refreshProfile: Error converting S3 key in fallback:', error);
             avatarUrl = null;
           }
+        }
+        
+        // Extract saved article IDs from profile
+        // savedArticles can be an array of article objects with id fields, or an array of IDs
+        const savedArticlesData = actualProfile.savedArticles || profile.savedArticles || [];
+        const articleIds: number[] = [];
+        
+        if (Array.isArray(savedArticlesData)) {
+          savedArticlesData.forEach((item: any) => {
+            // If it's an object with an id field, extract the id
+            if (item && typeof item === 'object' && item.id !== undefined) {
+              const id = typeof item.id === 'number' ? item.id : parseInt(item.id, 10);
+              if (!isNaN(id)) {
+                articleIds.push(id);
+              }
+            } 
+            // If it's already a number/ID, use it directly
+            else if (typeof item === 'number') {
+              articleIds.push(item);
+            } 
+            // If it's a string that can be parsed as a number
+            else if (typeof item === 'string') {
+              const id = parseInt(item, 10);
+              if (!isNaN(id)) {
+                articleIds.push(id);
+              }
+            }
+          });
+        }
+        
+        // Populate savedArticleIds immediately from profile data
+        if (articleIds.length > 0) {
+          setSavedArticleIds(new Set(articleIds));
+          logger.log(`[AUTH] refreshProfile: Loaded ${articleIds.length} saved article IDs from profile`);
+        } else {
+          // If no saved articles in profile, clear the set
+          setSavedArticleIds(new Set());
+          logger.log('[AUTH] refreshProfile: No saved articles found in profile');
         }
         
         // Get current user state (may have been updated since we started)

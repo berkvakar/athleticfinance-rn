@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -43,6 +44,7 @@ export default function AFPlusScreen() {
   const { user } = useAuth();
   const [articles, setArticles] = useState<Article[]>([]);
   const [loading, setLoading] = useState(false); // Start as false since there's no async work initially
+  const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
 
@@ -75,6 +77,25 @@ export default function AFPlusScreen() {
       setLoading(false);
     }
   };
+
+  const onRefresh = useCallback(async () => {
+    if (!user) return;
+    
+    try {
+      setRefreshing(true);
+      // TODO: Replace with actual API call to fetch articles
+      // When implementing real API call:
+      // const data = await apiClient.getArticles();
+      // setArticles(data);
+      
+      // For now, just reload existing logic
+      await loadArticles();
+    } catch (error) {
+      console.error('Error refreshing articles:', error);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [user]);
 
   // Filter articles based on premium status and search query - memoized for performance
   const visibleArticles = useMemo(() => {
@@ -181,6 +202,12 @@ export default function AFPlusScreen() {
             initialNumToRender={5}
             maxToRenderPerBatch={5}
             windowSize={10}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+              />
+            }
           />
         )}
       </View>
@@ -228,16 +255,17 @@ const styles = StyleSheet.create({
   emptyContainer: {
     flex: 1,
     width: '100%',
-  },
-  emptyStateWrapper: {
-    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  emptyStateWrapper: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: '100%',
   },
   emptyState: {
     justifyContent: 'center',
     alignItems: 'center',
-    paddingVertical: 60,
     paddingHorizontal: 40,
     width: '100%',
   },

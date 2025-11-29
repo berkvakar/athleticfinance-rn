@@ -9,7 +9,6 @@ import {
   Dimensions,
   ActivityIndicator,
   Alert,
-  RefreshControl,
   Image,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -44,7 +43,8 @@ export default function CommentSection({ articleId }: CommentSectionProps) {
   const [comments, setComments] = useState<Comment[]>([]);
   const [loading, setLoading] = useState(true);
   const [posting, setPosting] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
+  const [commentLimitReached, setCommentLimitReached] = useState(false);
+  const [nextCommentAvailable, setNextCommentAvailable] = useState<string | null>(null);
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [editText, setEditText] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -110,7 +110,6 @@ export default function CommentSection({ articleId }: CommentSectionProps) {
       setComments([]);
     } finally {
       setLoading(false);
-      setRefreshing(false);
     }
   }, [articleId]);
 
@@ -123,6 +122,21 @@ export default function CommentSection({ articleId }: CommentSectionProps) {
   const handlePostComment = async () => {
     if (!user) {
       Alert.alert('Sign In Required', 'Please sign in to post a comment.');
+      return;
+    }
+
+    // If the user has already hit their daily limit, show a friendly message
+    if (commentLimitReached) {
+      const readableTime =
+        nextCommentAvailable != null
+          ? new Date(nextCommentAvailable).toLocaleString()
+          : null;
+      Alert.alert(
+        'Daily comment limit reached',
+        readableTime
+          ? `You have reached your comment limit for today. You can comment again after ${readableTime}.`
+          : 'You have already commented today. Please try again tomorrow.'
+      );
       return;
     }
 
@@ -142,6 +156,29 @@ export default function CommentSection({ articleId }: CommentSectionProps) {
         const normalizedComment = normalizeComment(response.comment);
         setComments((prev) => [normalizedComment, ...prev]);
         setCommentText('');
+        // Reset limit state on successful comment post
+        setCommentLimitReached(false);
+        setNextCommentAvailable(null);
+      } else if (!response.success && response.limitReached) {
+        // Backend indicates the user has reached their daily comment limit
+        setCommentLimitReached(true);
+        setNextCommentAvailable(response.nextCommentAvailable ?? null);
+
+        const readableTime =
+          response.nextCommentAvailable != null
+            ? new Date(response.nextCommentAvailable).toLocaleString()
+            : null;
+
+        Alert.alert(
+          'Daily comment limit reached',
+          readableTime
+            ? response.message ||
+                response.error ||
+                `You have reached your comment limit for today. You can comment again after ${readableTime}.`
+            : response.message ||
+                response.error ||
+                'You have already commented today. Please try again tomorrow.'
+        );
       } else {
         Alert.alert('Error', response.error || 'Failed to post comment. Please try again.');
       }
@@ -234,12 +271,6 @@ export default function CommentSection({ articleId }: CommentSectionProps) {
     );
   };
 
-  // Handle refresh
-  const handleRefresh = () => {
-    setRefreshing(true);
-    fetchComments();
-  };
-
   // Get author display name
   const getAuthorName = (comment: Comment) => {
     if (!comment.author) {
@@ -290,9 +321,6 @@ export default function CommentSection({ articleId }: CommentSectionProps) {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={true}
         nestedScrollEnabled={true}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
-        }
       >
         <View style={styles.content}>
           {/* Header */}
@@ -487,10 +515,10 @@ export default function CommentSection({ articleId }: CommentSectionProps) {
                   <TouchableOpacity
                     style={[
                       styles.postButton,
-                      (commentText.trim().length === 0 || posting) && styles.postButtonDisabled,
+                      (commentText.trim().length === 0 || posting || commentLimitReached) && styles.postButtonDisabled,
                     ]}
                     onPress={handlePostComment}
-                    disabled={commentText.trim().length === 0 || posting}
+                    disabled={commentText.trim().length === 0 || posting || commentLimitReached}
                   >
                     {posting ? (
                       <ActivityIndicator size="small" color="#9CA3AF" />

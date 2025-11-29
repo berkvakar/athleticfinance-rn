@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,7 +10,6 @@ import {
   ScrollView,
   NativeScrollEvent,
   NativeSyntheticEvent,
-  RefreshControl,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -53,10 +52,43 @@ export default function ArticleDetailScreen({ route }: ArticleDetailScreenProps)
   const { user, savedArticleIds, bookmarkArticle, unbookmarkArticle } = useAuth();
   const scrollViewRef = useRef<ScrollView>(null);
   const [currentPage, setCurrentPage] = useState(0);
-  const [refreshing, setRefreshing] = useState(false);
+  const bookmarkScale = useRef(new Animated.Value(1)).current;
+  const bookmarkOpacity = useRef(new Animated.Value(1)).current;
 
   // Check if current article is saved
   const isSaved = savedArticleIds.has(article.id);
+
+  // Animate bookmark when state changes
+  useEffect(() => {
+    Animated.sequence([
+      Animated.parallel([
+        Animated.spring(bookmarkScale, {
+          toValue: 1.3,
+          useNativeDriver: true,
+          tension: 300,
+          friction: 7,
+        }),
+        Animated.timing(bookmarkOpacity, {
+          toValue: 0.7,
+          duration: 100,
+          useNativeDriver: true,
+        }),
+      ]),
+      Animated.parallel([
+        Animated.spring(bookmarkScale, {
+          toValue: 1,
+          useNativeDriver: true,
+          tension: 300,
+          friction: 7,
+        }),
+        Animated.timing(bookmarkOpacity, {
+          toValue: 1,
+          duration: 100,
+          useNativeDriver: true,
+        }),
+      ]),
+    ]).start();
+  }, [isSaved]);
 
   // Parse content into paragraph blocks
   const paragraphBlocks = parseToParagraphBlocks(article.content);
@@ -72,6 +104,21 @@ export default function ArticleDetailScreen({ route }: ArticleDetailScreenProps)
 
   const handleBookmark = async () => {
     if (!user) return;
+    
+    // Immediate visual feedback
+    Animated.sequence([
+      Animated.timing(bookmarkScale, {
+        toValue: 0.85,
+        duration: 100,
+        useNativeDriver: true,
+      }),
+      Animated.spring(bookmarkScale, {
+        toValue: 1,
+        useNativeDriver: true,
+        tension: 300,
+        friction: 7,
+      }),
+    ]).start();
     
     try {
       if (isSaved) {
@@ -103,22 +150,27 @@ export default function ArticleDetailScreen({ route }: ArticleDetailScreenProps)
   const handleMomentumScrollEnd = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const offsetY = event.nativeEvent.contentOffset.y;
     const pageHeight = SCREEN_HEIGHT;
-    const page = Math.round(offsetY / pageHeight);
-    
-    // Snap to nearest page
+    const rawPage = offsetY / pageHeight;
+
+    // Require a bigger swipe before advancing the page so scrolling feels "heavier"
+    let targetPage = currentPage;
+
+    if (rawPage > currentPage + 0.8) {
+      targetPage = currentPage + 1;
+    } else if (rawPage < currentPage - 0.8) {
+      targetPage = currentPage - 1;
+    }
+
+    // Clamp to valid bounds
+    targetPage = Math.max(0, Math.min(totalPages - 1, targetPage));
+
+    setCurrentPage(targetPage);
+
+    // Snap to the computed page
     scrollViewRef.current?.scrollTo({
-      y: page * pageHeight,
+      y: targetPage * pageHeight,
       animated: true,
     });
-  };
-
-  const onRefresh = async () => {
-    setRefreshing(true);
-    // Refresh article data or reload comments
-    // You can add actual refresh logic here if needed
-    setTimeout(() => {
-      setRefreshing(false);
-    }, 1000);
   };
 
   // Title/Intro Page
@@ -188,12 +240,20 @@ export default function ArticleDetailScreen({ route }: ArticleDetailScreenProps)
             onPress={handleBookmark}
             style={styles.headerButton}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            activeOpacity={0.6}
           >
-            <MaterialIcons 
-              name={isSaved ? "bookmark" : "bookmark-border"} 
-              size={24} 
-              color="#000" 
-            />
+            <Animated.View
+              style={{
+                transform: [{ scale: bookmarkScale }],
+                opacity: bookmarkOpacity,
+              }}
+            >
+              <MaterialIcons 
+                name={isSaved ? "bookmark" : "bookmark-border"} 
+                size={24} 
+                color="#000" 
+              />
+            </Animated.View>
           </TouchableOpacity>
         </View>
       }
@@ -218,16 +278,11 @@ export default function ArticleDetailScreen({ route }: ArticleDetailScreenProps)
           onMomentumScrollEnd={handleMomentumScrollEnd}
           scrollEventThrottle={16}
           pagingEnabled={false}
-          decelerationRate="fast"
+          // Lower decelerationRate so momentum dies out sooner (harder to fling)
+          decelerationRate={0.7}
           snapToInterval={SCREEN_HEIGHT}
           snapToAlignment="start"
           showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-            />
-          }
         >
           {/* Title Page */}
           <View key="title-page" style={styles.page}>
