@@ -200,7 +200,9 @@ class ApiClient {
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
       const sanitizedMessage = this.sanitizeErrorMessage(errorData.message || response.statusText);
-      throw new Error(sanitizedMessage);
+      const error: any = new Error(sanitizedMessage);
+      error.status = response.status;
+      throw error;
     }
 
     const contentType = response.headers.get('content-type');
@@ -392,6 +394,72 @@ class ApiClient {
     return this.request<any[]>(`/users/${userId}/comments`);
   }
 
+  // Get my comments (authenticated user's comments)
+  async getMyComments(): Promise<{
+    success: boolean;
+    comments?: Array<{
+      id: string;
+      text: string;
+      articleId: string;
+      articleTitle?: string;
+      timestamp: string;
+      replyTo?: string;
+    }>;
+    count?: number;
+    error?: string;
+  }> {
+    try {
+      const endpoint = `/api/profile/comments`;
+      logger.log('[API] getMyComments: Making request to:', endpoint);
+      const response = await this.request<any>(endpoint, {
+        method: 'GET',
+      });
+
+      logger.log('[API] getMyComments: Full raw response:', JSON.stringify(response, null, 2));
+      logger.log('[API] getMyComments: Response type:', typeof response);
+      logger.log('[API] getMyComments: Response keys:', Object.keys(response || {}));
+      logger.log('[API] getMyComments: response.success:', response?.success);
+      logger.log('[API] getMyComments: response.comments:', JSON.stringify(response?.comments, null, 2));
+      logger.log('[API] getMyComments: response.comments type:', typeof response?.comments);
+      logger.log('[API] getMyComments: response.comments is array?', Array.isArray(response?.comments));
+      logger.log('[API] getMyComments: response.comments length:', response?.comments?.length);
+      
+      if (response?.comments && Array.isArray(response.comments) && response.comments.length > 0) {
+        logger.log('[API] getMyComments: First comment structure:', JSON.stringify(response.comments[0], null, 2));
+        logger.log('[API] getMyComments: First comment keys:', Object.keys(response.comments[0] || {}));
+        if (response.comments[0]?.author) {
+          logger.log('[API] getMyComments: First comment author:', JSON.stringify(response.comments[0].author, null, 2));
+          logger.log('[API] getMyComments: First comment author keys:', Object.keys(response.comments[0].author || {}));
+          logger.log('[API] getMyComments: First comment author.avatar:', response.comments[0].author.avatar);
+          logger.log('[API] getMyComments: First comment author.avatar type:', typeof response.comments[0].author.avatar);
+        } else {
+          logger.log('[API] getMyComments: First comment has NO author field');
+        }
+      }
+
+      const result = {
+        success: response.success ?? true,
+        comments: response.comments || [],
+        count: response.count || 0,
+      };
+
+      logger.log('[API] getMyComments: Returning result:', JSON.stringify(result, null, 2));
+      return result;
+    } catch (error: any) {
+      logger.error('[API] getMyComments error:', {
+        message: error?.message,
+        stack: error?.stack,
+        status: error?.status,
+        url: error?.url,
+      });
+      return {
+        success: false,
+        error: error?.message || 'Failed to fetch comments',
+        comments: [],
+      };
+    }
+  }
+
   // Check if email exists in the system
   async checkEmailExists(email: string): Promise<{ exists?: boolean; available?: boolean; success?: boolean; message?: string }> {
     return await this.requestWithoutAuth(`/api/users?email=${encodeURIComponent(email)}`);
@@ -452,6 +520,14 @@ class ApiClient {
         error: data?.error || 'No articles found',
       };
     } catch (error: any) {
+      // Ignore 404 errors - this is expected when there's no recent article
+      if (error?.status === 404 || error?.message?.includes('404') || error?.message?.includes('Not Found')) {
+        return {
+          success: false,
+          error: 'No recent article found',
+        };
+      }
+      
       logger.error('[API] getRecentArticle error:', error?.message || error);
       return {
         success: false,

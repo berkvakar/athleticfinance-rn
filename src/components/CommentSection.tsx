@@ -404,7 +404,9 @@ export default function CommentSection({ articleId }: CommentSectionProps) {
                           }
                           // Show placeholder if no valid avatar URL
                           return (
-                            <MaterialIcons name="person" size={24} color="#fff" />
+                            <View style={styles.avatarPlaceholder}>
+                              <MaterialIcons name="person" size={24} color="#9CA3AF" />
+                            </View>
                           );
                         })()}
                       </View>
@@ -605,11 +607,19 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#000',
+    backgroundColor: '#E5E7EB',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
     overflow: 'hidden',
+  },
+  avatarPlaceholder: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#E5E7EB',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   avatarImage: {
     width: 40,

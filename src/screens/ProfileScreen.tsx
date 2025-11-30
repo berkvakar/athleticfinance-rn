@@ -28,12 +28,18 @@ import type { RootStackParamList } from '../navigation/AppNavigator';
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 interface Comment {
-  id: string;
-  text: string;
-  articleId: string;
-  articleTitle?: string;
-  timestamp: string;
-  replyTo?: string;
+  comment_id: string;
+  article_id: string;
+  content: string;
+  createdAt: string;
+  updatedAt: string;
+  isDeleted: boolean;
+  articleTitle?: string; // Will be fetched separately if needed
+  author: {
+    username: string;
+    name?: string;
+    avatar: string | null;
+  };
 }
 
 interface Article {
@@ -70,12 +76,15 @@ export default function ProfileScreen() {
   
   const { renderArticle } = useArticleList(savedArticleIds);
   const [loadingSavedArticles, setLoadingSavedArticles] = useState(false);
+  const [loadingComments, setLoadingComments] = useState(false);
   const [loading, setLoading] = useState(true);
   const [isEditingBio, setIsEditingBio] = useState(false);
   const [activeTab, setActiveTab] = useState<TabType>('comments');
   const [refreshingComments, setRefreshingComments] = useState(false);
   const [refreshingSaved, setRefreshingSaved] = useState(false);
   const [refreshingStatistics, setRefreshingStatistics] = useState(false);
+  const previousAvatarRef = useRef<string | null | undefined>(null);
+  const lastKnownAvatarRef = useRef<string | null>(null); // Store last known good avatar URL
   const [tabPositions, setTabPositions] = useState<{ [key: string]: number }>({
     comments: 0,
     saved: 0,
@@ -87,6 +96,7 @@ export default function ProfileScreen() {
   const screenHeight = Dimensions.get('window').height;
   const tabWidth = screenWidth / 3;
   const hasLoadedProfile = useRef(false);
+  const hasLoadedComments = useRef(false);
   const hasLoadedSavedArticles = useRef(false);
   const hasLoadedStatistics = useRef(false);
   
@@ -112,6 +122,13 @@ export default function ProfileScreen() {
     }
   }, [authLoading, profileLoading, user?.id]); // Wait for profile to load too
 
+  // Initialize previousAvatarRef with current avatar value
+  useEffect(() => {
+    if (user?.avatar && previousAvatarRef.current === null) {
+      previousAvatarRef.current = user.avatar;
+    }
+  }, [user?.avatar]);
+
   // Sync bio with user context when it changes
   useEffect(() => {
     if (user?.bio !== undefined) {
@@ -129,14 +146,28 @@ export default function ProfileScreen() {
 
   // Sync profile image with user avatar from context
   // Avatar is already a full URL or null (no S3 key conversion needed)
+  // Preserve current image during refresh to prevent flickering
   useEffect(() => {
-    if (user?.avatar && typeof user.avatar === 'string' && user.avatar.trim().length > 0) {
-      // Avatar is already a full URL, ready to use
-      setProfileImage(user.avatar);
-    } else {
-      // Clear profile image if user.avatar is null/undefined/empty
+    const currentAvatar = user?.avatar;
+    
+    // Only update profileImage when we have a valid avatar URL
+    // This prevents clearing the image during refresh when avatar might be temporarily undefined
+    if (currentAvatar && typeof currentAvatar === 'string' && currentAvatar.trim().length > 0 && currentAvatar.startsWith('http')) {
+      // Update if the avatar changed to a new valid URL, or initialize if this is the first time
+      if (currentAvatar !== previousAvatarRef.current || lastKnownAvatarRef.current === null) {
+        previousAvatarRef.current = currentAvatar;
+        lastKnownAvatarRef.current = currentAvatar; // Store as last known good avatar
+        setProfileImage(currentAvatar);
+      }
+    } else if (currentAvatar === null && previousAvatarRef.current !== null && previousAvatarRef.current !== undefined) {
+      // Only clear if avatar was explicitly set to null (user removed it)
+      // Check that we had a previous avatar to avoid clearing on initial load
+      previousAvatarRef.current = null;
+      lastKnownAvatarRef.current = null; // Clear last known avatar only when explicitly removed
       setProfileImage(null);
     }
+    // If currentAvatar is undefined, preserve current profileImage (don't clear during refresh)
+    // This prevents the image from disappearing during refresh operations
   }, [user?.avatar]);
 
 
@@ -161,6 +192,7 @@ export default function ProfileScreen() {
       
       if (user.avatar) {
         setProfileImage(user.avatar);
+        lastKnownAvatarRef.current = user.avatar; // Initialize last known avatar
       }
       
       if (user.username) {
@@ -179,8 +211,7 @@ export default function ProfileScreen() {
         memberNumber: user.memberNumber,
       });
       
-      // Load user comments (if needed in future)
-      setComments([]); // Empty for now
+      // Comments will be loaded when comments tab is active
     } catch (error) {
       console.error('[PROFILE] Error loading profile:', error);
     } finally {
@@ -235,19 +266,36 @@ export default function ProfileScreen() {
     // await apiClient.updateUserProfile(user.id, { bio });
   };
 
-  const formatDate = (timestamp: string) => {
-    const date = new Date(timestamp);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMs / 3600000);
-    const diffDays = Math.floor(diffMs / 86400000);
+  const formatDate = (dateString: string) => {
+    try {
+      const date = new Date(dateString);
+      const now = new Date();
+      const diffMs = now.getTime() - date.getTime();
+      const diffMins = Math.floor(diffMs / 60000);
+      const diffHours = Math.floor(diffMs / 3600000);
+      const diffDays = Math.floor(diffMs / 86400000);
 
-    if (diffMins < 1) return 'just now';
-    if (diffMins < 60) return `${diffMins}m ago`;
-    if (diffHours < 24) return `${diffHours}h ago`;
-    if (diffDays < 7) return `${diffDays}d ago`;
-    return date.toLocaleDateString();
+      if (diffMins < 1) return 'Just now';
+      if (diffMins < 60) return `${diffMins}m ago`;
+      if (diffHours < 24) return `${diffHours}h ago`;
+      if (diffDays < 7) return `${diffDays}d ago`;
+      
+      return date.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+      });
+    } catch (error) {
+      return 'Unknown date';
+    }
+  };
+
+  // Get author display name
+  const getAuthorName = (comment: Comment) => {
+    if (!comment.author) {
+      return 'Anonymous';
+    }
+    return comment.author.name || comment.author.username || 'Anonymous';
   };
 
   const handleSettingsPress = () => {
@@ -288,6 +336,11 @@ export default function ProfileScreen() {
       friction: 10,
     }).start();
 
+    // Load comments when switching to comments tab (only if not already loaded)
+    if (tab === 'comments' && !hasLoadedComments.current && !loadingComments) {
+      loadComments();
+    }
+    
     // Load saved articles when switching to saved tab (only if not already loaded)
     if (tab === 'saved' && !hasLoadedSavedArticles.current && !loadingSavedArticles) {
       loadSavedArticles();
@@ -298,6 +351,45 @@ export default function ProfileScreen() {
       loadStatistics();
     }
   };
+
+  const loadComments = useCallback(async () => {
+    if (!user || loadingComments) return;
+    
+    try {
+      setLoadingComments(true);
+      const result = await apiClient.getMyComments();
+      if (result.success && result.comments) {
+        // Transform API response to match Comment interface
+        // API returns: comment_id, article_id, content, createdAt, author, etc.
+        // We need to normalize and potentially fetch article titles
+        const transformedComments: Comment[] = result.comments.map((comment: any) => ({
+          comment_id: comment.comment_id,
+          article_id: comment.article_id,
+          content: comment.content,
+          createdAt: comment.createdAt,
+          updatedAt: comment.updatedAt,
+          isDeleted: comment.isDeleted || false,
+          articleTitle: comment.articleTitle, // May be undefined
+          author: {
+            username: comment.author?.username || 'Anonymous',
+            name: comment.author?.name,
+            avatar: comment.author?.avatar ?? null,
+          },
+        }));
+        setComments(transformedComments);
+        hasLoadedComments.current = true;
+      } else {
+        setComments([]);
+        hasLoadedComments.current = true;
+      }
+    } catch (error) {
+      console.error('Error loading comments:', error);
+      setComments([]);
+      hasLoadedComments.current = true;
+    } finally {
+      setLoadingComments(false);
+    }
+  }, [user, loadingComments]);
 
   const loadSavedArticles = useCallback(async () => {
     if (!user || loadingSavedArticles) return;
@@ -327,6 +419,13 @@ export default function ProfileScreen() {
       indicatorPosition.setValue(tabPositions.comments);
     }
   }, [tabPositions.comments, activeTab]);
+
+  // Load comments when comments tab becomes active (only once)
+  useEffect(() => {
+    if (activeTab === 'comments' && user && !hasLoadedComments.current && !loadingComments) {
+      loadComments();
+    }
+  }, [activeTab, user, loadComments]);
 
   // Load saved articles when saved tab becomes active (only once)
   useEffect(() => {
@@ -421,13 +520,14 @@ export default function ProfileScreen() {
     try {
       setRefreshingComments(true);
       await refreshProfile();
-      // TODO: Load comments if needed
+      hasLoadedComments.current = false;
+      await loadComments();
     } catch (error: any) {
       console.error('[PROFILE SCREEN] Error refreshing comments:', error);
     } finally {
       setRefreshingComments(false);
     }
-  }, [user, refreshProfile]);
+  }, [user, refreshProfile, loadComments]);
 
   // Handle pull-to-refresh for saved tab
   const onRefreshSaved = useCallback(async () => {
@@ -462,15 +562,41 @@ export default function ProfileScreen() {
     }
   }, [user, refreshProfile, loadStatistics]);
 
-  const renderComment = ({ item }: { item: Comment }) => (
-    <View style={styles.commentCard}>
-      {item.articleTitle && (
-        <Text style={styles.commentArticleTitle}>Replied to: {item.articleTitle}</Text>
-      )}
-      <Text style={styles.commentText}>{item.text}</Text>
-      <Text style={styles.commentDate}>{formatDate(item.timestamp)}</Text>
-    </View>
-  );
+  const renderComment = ({ item }: { item: Comment }) => {
+    const avatarUri = item.author?.avatar;
+    
+    return (
+      <View style={styles.commentCard}>
+        <View style={styles.commentHeader}>
+          <View style={styles.commentAvatar}>
+            {avatarUri && typeof avatarUri === 'string' && avatarUri.trim().length > 0 && avatarUri.startsWith('http') ? (
+              <Image
+                source={{ uri: avatarUri }}
+                style={styles.commentAvatarImage}
+                resizeMode="cover"
+              />
+            ) : (
+              <View style={styles.commentAvatarPlaceholder}>
+                <MaterialIcons name="person" size={24} color="#9CA3AF" />
+              </View>
+            )}
+          </View>
+          <View style={styles.commentMeta}>
+            <Text style={styles.commentAuthor}>
+              {getAuthorName(item)}
+            </Text>
+            <Text style={styles.commentDate}>
+              {formatDate(item.createdAt)}
+            </Text>
+          </View>
+        </View>
+        {item.articleTitle && (
+          <Text style={styles.commentArticleTitle}>Replied to: {item.articleTitle}</Text>
+        )}
+        <Text style={styles.commentContent}>{item.content}</Text>
+      </View>
+    );
+  };
 
   // Animated number component
   const AnimatedNumber = ({ value, style }: { value: Animated.Value; style?: any }) => {
@@ -525,7 +651,8 @@ export default function ProfileScreen() {
             activeOpacity={0.8}
           >
             {(() => {
-              const avatarUri = profileImage || user?.avatar;
+              // Use last known good avatar as fallback to prevent flickering during refresh
+              const avatarUri = profileImage || user?.avatar || lastKnownAvatarRef.current;
               // Only render Image if we have a valid non-empty URL
               if (avatarUri && typeof avatarUri === 'string' && avatarUri.trim().length > 0 && avatarUri.startsWith('http')) {
                 return (
@@ -537,8 +664,10 @@ export default function ProfileScreen() {
                     onLoad={() => console.log('[PROFILE SCREEN] Image loaded successfully')}
                     onError={(error) => {
                       console.error('[PROFILE SCREEN] Image load error:', error);
-                      // If image fails to load, show placeholder
-                      setProfileImage(null);
+                      // If image fails to load, only clear if it's not the last known avatar
+                      if (avatarUri !== lastKnownAvatarRef.current) {
+                        setProfileImage(null);
+                      }
                     }}
                   />
                 );
@@ -602,6 +731,7 @@ export default function ProfileScreen() {
               ]}
             />
             <TouchableOpacity
+              key="tab-comments"
               style={[styles.tab, { width: tabWidth }]}
               onPress={() => handleTabChange('comments')}
               onLayout={(event) => handleTabLayout('comments', event)}
@@ -614,6 +744,7 @@ export default function ProfileScreen() {
               />
             </TouchableOpacity>
             <TouchableOpacity
+              key="tab-saved"
               style={[styles.tab, { width: tabWidth }]}
               onPress={() => handleTabChange('saved')}
               onLayout={(event) => handleTabLayout('saved', event)}
@@ -626,6 +757,7 @@ export default function ProfileScreen() {
               />
             </TouchableOpacity>
             <TouchableOpacity
+              key="tab-statistics"
               style={[styles.tab, { width: tabWidth }]}
               onPress={() => handleTabChange('statistics')}
               onLayout={(event) => handleTabLayout('statistics', event)}
@@ -642,43 +774,35 @@ export default function ProfileScreen() {
           {/* Tab Content - Each tab has its own ScrollView with RefreshControl */}
           <View style={styles.tabContent}>
             {activeTab === 'comments' && (
-              <ScrollView
-                style={styles.tabScrollView}
-                contentContainerStyle={styles.tabScrollContent}
-                showsVerticalScrollIndicator={false}
-                bounces={true}
-                alwaysBounceVertical={true}
-                refreshControl={
-                  <RefreshControl
-                    refreshing={refreshingComments}
-                    onRefresh={onRefreshComments}
-                  />
-                }
-              >
-                {comments.length > 0 ? (
-                  <View style={styles.commentsList}>
-                    {comments.map((item) => (
-                      <View key={item.id} style={styles.commentCard}>
-                        {item.articleTitle && (
-                          <Text style={styles.commentArticleTitle}>Replied to: {item.articleTitle}</Text>
-                        )}
-                        <Text style={styles.commentText}>{item.text}</Text>
-                        <Text style={styles.commentDate}>{formatDate(item.timestamp)}</Text>
-                      </View>
-                    ))}
+              loadingComments ? (
+                <View style={styles.emptyStateContainer}>
+                  <ActivityIndicator size="large" color="#000" />
+                </View>
+              ) : comments.length > 0 ? (
+                <FlatList
+                  data={comments}
+                  renderItem={renderComment}
+                  keyExtractor={(item) => item.comment_id}
+                  contentContainerStyle={styles.commentsList}
+                  showsVerticalScrollIndicator={false}
+                  refreshControl={
+                    <RefreshControl
+                      refreshing={refreshingComments}
+                      onRefresh={onRefreshComments}
+                    />
+                  }
+                />
+              ) : (
+                <View style={styles.emptyStateContainer}>
+                  <View style={styles.emptyState}>
+                    <MaterialIcons name="comment" size={48} color="#999" />
+                    <Text style={styles.emptyStateText}>No comments yet</Text>
+                    <Text style={styles.emptyStateSubtext}>
+                      Your comments will appear here
+                    </Text>
                   </View>
-                ) : (
-                  <View style={styles.emptyStateContainer}>
-                    <View style={styles.emptyState}>
-                      <MaterialIcons name="comment" size={48} color="#999" />
-                      <Text style={styles.emptyStateText}>No comments yet</Text>
-                      <Text style={styles.emptyStateSubtext}>
-                        Your comments will appear here
-                      </Text>
-                    </View>
-                  </View>
-                )}
-              </ScrollView>
+                </View>
+              )
             )}
 
             {activeTab === 'saved' && (
@@ -742,7 +866,7 @@ export default function ProfileScreen() {
                 ) : (
                   <View style={styles.statisticsContainer}>
                     {/* Articles Read Card */}
-                    <Animated.View style={[styles.statCard, styles.statCardPrimary]}>
+                    <Animated.View key="articles-read" style={[styles.statCard, styles.statCardPrimary]}>
                       <View style={styles.statIconContainer}>
                         <MaterialIcons name="article" size={22} color="#6366F1" />
                       </View>
@@ -765,7 +889,7 @@ export default function ProfileScreen() {
                     </Animated.View>
 
                     {/* Streak Card */}
-                    <Animated.View style={[styles.statCard, styles.statCardStreak]}>
+                    <Animated.View key="streak" style={[styles.statCard, styles.statCardStreak]}>
                       <View style={styles.statIconContainer}>
                         <MaterialIcons name="local-fire-department" size={22} color="#F59E0B" />
                       </View>
@@ -788,7 +912,7 @@ export default function ProfileScreen() {
                     </Animated.View>
 
                     {/* Comments Posted Card */}
-                    <Animated.View style={[styles.statCard, styles.statCardComments]}>
+                    <Animated.View key="comments-posted" style={[styles.statCard, styles.statCardComments]}>
                       <View style={styles.statIconContainer}>
                         <MaterialIcons name="comment" size={22} color="#10B981" />
                       </View>
@@ -850,7 +974,8 @@ export default function ProfileScreen() {
               onPress={(e) => e.stopPropagation()}
             >
               {(() => {
-                const avatarUri = profileImage || user?.avatar;
+                // Use last known good avatar as fallback to prevent flickering during refresh
+                const avatarUri = profileImage || user?.avatar || lastKnownAvatarRef.current;
                 // Only render Image if we have a valid non-empty URL
                 if (avatarUri && typeof avatarUri === 'string' && avatarUri.trim().length > 0 && avatarUri.startsWith('http')) {
                   return (
@@ -1093,29 +1218,64 @@ const styles = StyleSheet.create({
   commentsList: {
     paddingTop: 16,
     paddingBottom: 20,
+    paddingHorizontal: 16,
   },
   commentCard: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F5F5F5',
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
   },
-  commentArticleTitle: {
-    fontSize: 11,
-    color: '#999',
-    marginBottom: 6,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
+  commentHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
   },
-  commentText: {
-    fontSize: 14,
+  commentAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    marginRight: 12,
+    overflow: 'hidden',
+    backgroundColor: '#E5E7EB',
+  },
+  commentAvatarPlaceholder: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#E5E7EB',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  commentAvatarImage: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+  },
+  commentMeta: {
+    flex: 1,
+  },
+  commentAuthor: {
+    fontSize: 16,
+    fontWeight: '600',
     color: '#000',
-    lineHeight: 20,
-    marginBottom: 6,
+    marginBottom: 2,
   },
   commentDate: {
     fontSize: 12,
     color: '#999',
+  },
+  commentArticleTitle: {
+    fontSize: 11,
+    color: '#999',
+    marginBottom: 8,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  commentContent: {
+    fontSize: 15,
+    color: '#1a1a1a',
+    lineHeight: 22,
   },
   emptyStateContainer: {
     flexGrow: 1,

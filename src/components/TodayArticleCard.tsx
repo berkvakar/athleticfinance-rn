@@ -15,10 +15,28 @@ import { useAuth } from '../contexts/AuthContext';
 
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get('window');
 
+// Format media URL - add https:// if missing
+const formatMediaUrl = (url: string): string => {
+  if (!url) return '';
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    return url;
+  }
+  return `https://${url}`;
+};
+
+interface MediaObject {
+  id: number;
+  url: string;
+  width?: number;
+  height?: number;
+  alt?: string | null;
+  filename?: string;
+}
+
 interface TodayArticleCardProps {
   id: number;
   title: string;
-  hero_image_id?: number | null;
+  hero_image_id?: number | MediaObject | null;
   imageUrl?: string;
   onPress?: () => void;
   isSaved?: boolean;
@@ -178,6 +196,16 @@ export default function TodayArticleCard({
     outputRange: ['0deg', '360deg'],
   });
 
+  // Get hero image URL if available - same logic as ArticleDetailScreen
+  let heroImageUrl: string | null = null;
+  if (hero_image_id) {
+    if (typeof hero_image_id === 'object' && hero_image_id.url) {
+      heroImageUrl = formatMediaUrl(hero_image_id.url);
+    }
+  }
+  // Use imageUrl prop if provided, otherwise use heroImageUrl from hero_image_id
+  const finalImageUrl = imageUrl || heroImageUrl;
+
   return (
     <TouchableOpacity
       style={styles.container}
@@ -213,16 +241,19 @@ export default function TodayArticleCard({
         </View>
 
         {/* Hero Image */}
-        {(hero_image_id || imageUrl) ? (
+        {(hero_image_id || finalImageUrl) ? (
           <View style={styles.imageContainer}>
             <View style={styles.imageWrapper}>
-              {imageUrl ? (
+              {finalImageUrl ? (
                 <Image
-                  source={{ uri: imageUrl }}
+                  source={{ uri: finalImageUrl }}
                   style={styles.image}
                   resizeMode="cover"
                   defaultSource={require('../../assets/af-logo.png')}
                   fadeDuration={200}
+                  onError={(error) => {
+                    console.log('[TODAY_ARTICLE_CARD] Hero image load error:', error);
+                  }}
                 />
               ) : (
                 <View style={styles.imagePlaceholder}>
