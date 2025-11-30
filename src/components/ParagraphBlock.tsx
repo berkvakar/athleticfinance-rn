@@ -152,5 +152,11 @@ const htmlTagStyles = {
     borderRadius: 3,
     fontSize: 14,
   },
+  img: {
+    maxWidth: '100%',
+    height: 'auto',
+    marginVertical: 16,
+    borderRadius: 8,
+  },
 };
 

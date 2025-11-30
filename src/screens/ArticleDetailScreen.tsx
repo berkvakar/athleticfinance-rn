@@ -23,10 +23,19 @@ import { useAuth } from '../contexts/AuthContext';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
+interface MediaObject {
+  id: number;
+  url: string;
+  width?: number;
+  height?: number;
+  alt?: string | null;
+  filename?: string;
+}
+
 interface Article {
   id: number;
   title: string;
-  hero_image_id: number | null;
+  hero_image_id: MediaObject | number | null;
   content: {
     root: {
       children: any[];
@@ -45,6 +54,15 @@ interface ArticleDetailScreenProps {
 }
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+
+// Format media URL - add https:// if missing
+const formatMediaUrl = (url: string): string => {
+  if (!url) return '';
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    return url;
+  }
+  return `https://${url}`;
+};
 
 export default function ArticleDetailScreen({ route }: ArticleDetailScreenProps) {
   const navigation = useNavigation<NavigationProp>();
@@ -177,18 +195,38 @@ export default function ArticleDetailScreen({ route }: ArticleDetailScreenProps)
   };
 
   // Title/Intro Page
-  const renderTitlePage = () => (
-    <View style={styles.titlePage}>
-      <View style={styles.titleContent}>
-        {/* Hero Image */}
-        {article.hero_image_id && (
-          <View style={styles.heroImageContainer}>
-            <View style={styles.heroImagePlaceholder}>
-              <MaterialIcons name="image" size={48} color="#999" />
-              <Text style={styles.heroImagePlaceholderText}>Hero Image</Text>
+  const renderTitlePage = () => {
+    // Get hero image URL if available
+    let heroImageUrl: string | null = null;
+    if (article.hero_image_id) {
+      if (typeof article.hero_image_id === 'object' && article.hero_image_id.url) {
+        heroImageUrl = formatMediaUrl(article.hero_image_id.url);
+      }
+    }
+
+    return (
+      <View style={styles.titlePage}>
+        <View style={styles.titleContent}>
+          {/* Hero Image */}
+          {heroImageUrl ? (
+            <View style={styles.heroImageContainer}>
+              <Image
+                source={{ uri: heroImageUrl }}
+                style={styles.heroImage}
+                resizeMode="cover"
+                onError={(error) => {
+                  console.log('[ARTICLE_DETAIL] Hero image load error:', error);
+                }}
+              />
             </View>
-          </View>
-        )}
+          ) : article.hero_image_id ? (
+            <View style={styles.heroImageContainer}>
+              <View style={styles.heroImagePlaceholder}>
+                <MaterialIcons name="image" size={48} color="#999" />
+                <Text style={styles.heroImagePlaceholderText}>Hero Image</Text>
+              </View>
+            </View>
+          ) : null}
 
         {/* Title */}
         <Text style={styles.title}>{article.title}</Text>
@@ -207,7 +245,8 @@ export default function ArticleDetailScreen({ route }: ArticleDetailScreenProps)
         )}
       </View>
     </View>
-  );
+    );
+  };
 
   // Render paragraph block page
   const renderParagraphPage = (block: ParagraphBlockType, index: number) => (
@@ -365,6 +404,12 @@ const styles = StyleSheet.create({
   heroImageContainer: {
     width: '100%',
     marginBottom: 32,
+  },
+  heroImage: {
+    width: '100%',
+    aspectRatio: 16 / 9,
+    borderRadius: 20,
+    backgroundColor: '#F5F5F5',
   },
   heroImagePlaceholder: {
     width: '100%',

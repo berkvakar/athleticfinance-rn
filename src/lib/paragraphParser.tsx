@@ -37,12 +37,22 @@ interface LexicalListItemNode {
   children?: LexicalNode[];
 }
 
+interface MediaObject {
+  id: number;
+  url: string;
+  width?: number;
+  height?: number;
+  alt?: string | null;
+  filename?: string;
+}
+
 interface LexicalBlockNode {
   type: 'block';
   fields?: {
     id?: string;
-    media?: number;
+    media?: MediaObject | number;
     blockType?: string;
+    blockName?: string;
   };
 }
 
@@ -78,6 +88,15 @@ const escapeHTML = (str: string = ''): string =>
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+
+// Format media URL - add https:// if missing
+const formatMediaUrl = (url: string): string => {
+  if (!url) return '';
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    return url;
+  }
+  return `https://${url}`;
+};
 
 const Format = {
   BOLD: 1,
@@ -119,15 +138,15 @@ const renderNodeToHTML = (node: LexicalNode): string => {
     case 'text': {
       const textNode = node as LexicalTextNode;
       const format = textNode.format ?? 0;
-      if (format !== 0) {
-        console.log('[PARAGRAPH_PARSER] Text node with format:', {
-          text: textNode.text,
-          format: format,
-          formatBinary: format.toString(2),
-          isBold: !!(format & Format.BOLD),
-          isItalic: !!(format & Format.ITALIC),
-        });
-      }
+      // if (format !== 0) {
+      //   console.log('[PARAGRAPH_PARSER] Text node with format:', {
+      //     text: textNode.text,
+      //     format: format,
+      //     formatBinary: format.toString(2),
+      //     isBold: !!(format & Format.BOLD),
+      //     isItalic: !!(format & Format.ITALIC),
+      //   });
+      // }
       return applyFormatting(escapeHTML(textNode.text || ''), format);
     }
     case 'paragraph': {
@@ -165,6 +184,23 @@ const renderNodeToHTML = (node: LexicalNode): string => {
       const blockNode = node as LexicalBlockNode;
       const blockType = escapeHTML(blockNode.fields?.blockType || 'custom-block');
       const blockId = escapeHTML(blockNode.fields?.id || '');
+      
+      // Handle media blocks
+      if (blockType === 'mediaBlock' && blockNode.fields?.media) {
+        const media = blockNode.fields.media;
+        // Check if media is an object (new format) or a number (old format)
+        // Use type guard to properly narrow the type
+        if (typeof media === 'object' && media !== null && 'url' in media) {
+          const mediaObj = media as MediaObject;
+          const mediaUrl = formatMediaUrl(mediaObj.url);
+          const alt = escapeHTML(mediaObj.alt || mediaObj.filename || '');
+          const width = mediaObj.width ? ` width="${mediaObj.width}"` : '';
+          const height = mediaObj.height ? ` height="${mediaObj.height}"` : '';
+          return `<img src="${escapeHTML(mediaUrl)}" alt="${alt}"${width}${height} style="max-width: 100%; height: auto; display: block; margin: 16px 0;" />`;
+        }
+      }
+      
+      // Fallback for other block types
       return `<div data-block-type="${blockType}" data-block-id="${blockId}" class="payload-block-placeholder">[${blockType}]</div>`;
     }
     default:
