@@ -58,6 +58,9 @@ export default function ArticleDetailScreen({ route }: ArticleDetailScreenProps)
   // Check if current article is saved
   const isSaved = savedArticleIds.has(article.id);
 
+  // Log the full article object to see if media data is included
+  //console.log('[ARTICLE_DETAIL] Full article object:', JSON.stringify(article, null, 2));
+
   // Animate bookmark when state changes
   useEffect(() => {
     Animated.sequence([

@@ -132,5 +132,25 @@ const htmlTagStyles = {
     backgroundColor: '#E5E5E5',
     marginVertical: 24,
   },
+  strong: {
+    fontWeight: '700',
+  },
+  em: {
+    fontStyle: 'italic',
+  },
+  u: {
+    textDecorationLine: 'underline',
+  },
+  s: {
+    textDecorationLine: 'line-through',
+  },
+  code: {
+    fontFamily: 'monospace',
+    backgroundColor: '#f5f5f5',
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+    borderRadius: 3,
+    fontSize: 14,
+  },
 };
 

@@ -118,7 +118,17 @@ const renderNodeToHTML = (node: LexicalNode): string => {
   switch (node.type) {
     case 'text': {
       const textNode = node as LexicalTextNode;
-      return applyFormatting(escapeHTML(textNode.text || ''), textNode.format);
+      const format = textNode.format ?? 0;
+      if (format !== 0) {
+        console.log('[PARAGRAPH_PARSER] Text node with format:', {
+          text: textNode.text,
+          format: format,
+          formatBinary: format.toString(2),
+          isBold: !!(format & Format.BOLD),
+          isItalic: !!(format & Format.ITALIC),
+        });
+      }
+      return applyFormatting(escapeHTML(textNode.text || ''), format);
     }
     case 'paragraph': {
       const paragraphNode = node as LexicalParagraphNode;
@@ -164,6 +174,9 @@ const renderNodeToHTML = (node: LexicalNode): string => {
 
 // Parse lexical content into blocks of HTML similar to Payload preview
 export const parseToParagraphBlocks = (content: LexicalRoot): ParagraphBlock[] => {
+  // Log the full content JSON for debugging
+  //console.log('[PARAGRAPH_PARSER] Full article content JSON:', JSON.stringify(content, null, 2));
+  
   if (!content?.root?.children) {
     return [];
   }
