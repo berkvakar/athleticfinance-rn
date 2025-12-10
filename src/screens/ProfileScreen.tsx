@@ -56,6 +56,30 @@ interface Article {
   imageUrl?: string;
 }
 
+interface ProfileStatsSummary {
+  // Total UNIQUE articles read (size of the server-side articlesReadSet)
+  articlesRead: number;
+  // Optional explicit count field if backend returns both articlesRead and articlesReadCount
+  articlesReadCount?: number;
+  commentsPosted: number;
+  streak: number;
+  // Timestamp of the last NEW unique article that counted toward the streak
+  streakLastReadAt?: string | null;
+  // Convenience timestamps for UI
+  lastActivityDate?: string | null;
+  lastViewedAt?: string | null;
+  updatedAt?: string | null;
+  longestStreak?: number | null;
+}
+
+const PROFILE_STATS_DEFAULT: ProfileStatsSummary = {
+  articlesRead: 0,
+  commentsPosted: 0,
+  streak: 0,
+  lastActivityDate: null,
+  updatedAt: null,
+};
+
 type TabType = 'comments' | 'saved' | 'statistics';
 
 export default function ProfileScreen() {
@@ -67,11 +91,7 @@ export default function ProfileScreen() {
   const [profileUsername, setProfileUsername] = useState<string | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [savedArticles, setSavedArticles] = useState<Article[]>([]);
-  const [statistics, setStatistics] = useState<{
-    articlesRead: number;
-    streak: number;
-    commentsPosted: number;
-  } | null>(null);
+  const [statistics, setStatistics] = useState<ProfileStatsSummary | null>(null);
   const [loadingStatistics, setLoadingStatistics] = useState(false);
   
   const { renderArticle } = useArticleList(savedArticleIds);
@@ -446,64 +466,59 @@ export default function ProfileScreen() {
     
     try {
       setLoadingStatistics(true);
-      const result = await apiClient.getUserProfile();
-      if (result.success && result.profile?.statistics) {
-        const stats = result.profile.statistics;
-        const articlesRead = stats.articlesRead || 0;
-        const streak = stats.streak || 0;
-        const commentsPosted = stats.commentsPosted || 0;
+      
+      const summaryResponse = await apiClient.getProfileStatsSummary();
+
+      if (summaryResponse.success && summaryResponse.stats) {
+        const stats = summaryResponse.stats;
+        const normalizedStats: ProfileStatsSummary = {
+          articlesRead: stats.articlesRead ?? 0,
+          articlesReadCount: stats.articlesReadCount ?? stats.articlesRead ?? 0,
+          commentsPosted: stats.commentsPosted ?? 0,
+          streak: stats.streak ?? 0,
+          streakLastReadAt: stats.streakLastReadAt ?? null,
+          lastActivityDate: stats.lastActivityDate ?? stats.lastViewedAt ?? null,
+          lastViewedAt: stats.lastViewedAt ?? null,
+          updatedAt: stats.updatedAt ?? null,
+          longestStreak: stats.longestStreak ?? null,
+        };
         
-        setStatistics({
-          articlesRead,
-          streak,
-          commentsPosted,
-        });
-        hasLoadedStatistics.current = true;
-        
-        // Reset animated values to 0 before animating
+        setStatistics(normalizedStats);
+
         articlesReadAnim.setValue(0);
         streakAnim.setValue(0);
         commentsPostedAnim.setValue(0);
         
-        // Animate the numbers with a slight delay for visual effect
         Animated.parallel([
           Animated.timing(articlesReadAnim, {
-            toValue: articlesRead,
+            toValue: normalizedStats.articlesRead,
             duration: 1500,
             useNativeDriver: false,
           }),
           Animated.timing(streakAnim, {
-            toValue: streak,
+            toValue: normalizedStats.streak,
             duration: 1500,
             delay: 100,
             useNativeDriver: false,
           }),
           Animated.timing(commentsPostedAnim, {
-            toValue: commentsPosted,
+            toValue: normalizedStats.commentsPosted,
             duration: 1500,
             delay: 200,
             useNativeDriver: false,
           }),
         ]).start();
       } else {
-        // Default to 0 if no statistics found
-        setStatistics({
-          articlesRead: 0,
-          streak: 0,
-          commentsPosted: 0,
-        });
+        setStatistics(PROFILE_STATS_DEFAULT);
         articlesReadAnim.setValue(0);
         streakAnim.setValue(0);
         commentsPostedAnim.setValue(0);
-        hasLoadedStatistics.current = true;
       }
+
+      hasLoadedStatistics.current = true;
     } catch (error) {
       console.error('Error loading statistics:', error);
-      setStatistics({
-        articlesRead: 0,
-        streak: 0,
-        commentsPosted: 0,
-      });
+      setStatistics(PROFILE_STATS_DEFAULT);
       articlesReadAnim.setValue(0);
       streakAnim.setValue(0);
       commentsPostedAnim.setValue(0);
@@ -613,6 +628,15 @@ export default function ProfileScreen() {
     
     return <Text style={style}>{displayValue.toLocaleString()}</Text>;
   };
+
+  // Decide what to show in the UI:
+  // - Before first successful load: show a loading state instead of fake zeros
+  // - After we have real stats: keep showing the last known values while loading/refetching
+  const statsForUi = statistics ?? PROFILE_STATS_DEFAULT;
+  const hasStatisticsLoadedOnce = hasLoadedStatistics.current;
+  const isInitialStatsLoading = !hasStatisticsLoadedOnce && (loadingStatistics || !statistics);
+
+  // No derived progress metrics – we show raw all-time counts only.
 
   // Show loading if auth is still loading, profile is loading, or local profile is loading
   if (authLoading || profileLoading || loading) {
@@ -859,55 +883,32 @@ export default function ProfileScreen() {
                   />
                 }
               >
-                {loadingStatistics ? (
+                {isInitialStatsLoading ? (
                   <View style={styles.emptyStateContainer}>
                     <ActivityIndicator size="large" color="#000" />
                   </View>
                 ) : (
                   <View style={styles.statisticsContainer}>
-                    {/* Articles Read Card */}
-                    <Animated.View key="articles-read" style={[styles.statCard, styles.statCardPrimary]}>
-                      <View style={styles.statIconContainer}>
-                        <MaterialIcons name="article" size={22} color="#6366F1" />
-                      </View>
-                      <AnimatedNumber value={articlesReadAnim} style={styles.statNumber} />
-                      <Text style={styles.statLabel}>Articles Read</Text>
-                      <View style={styles.statProgressBar}>
-                        <Animated.View 
-                          style={[
-                            styles.statProgressFill,
-                            {
-                              width: articlesReadAnim.interpolate({
-                                inputRange: [0, 100],
-                                outputRange: ['0%', '100%'],
-                                extrapolate: 'clamp',
-                              }),
-                            },
-                          ]}
-                        />
-                      </View>
-                    </Animated.View>
 
                     {/* Streak Card */}
                     <Animated.View key="streak" style={[styles.statCard, styles.statCardStreak]}>
                       <View style={styles.statIconContainer}>
                         <MaterialIcons name="local-fire-department" size={22} color="#F59E0B" />
                       </View>
-                      <AnimatedNumber value={streakAnim} style={styles.statNumber} />
-                      <Text style={styles.statLabel}>Day Streak</Text>
-                      <View style={styles.statProgressBar}>
-                        <Animated.View 
-                          style={[
-                            styles.statProgressFillStreak,
-                            {
-                              width: streakAnim.interpolate({
-                                inputRange: [0, 30],
-                                outputRange: ['0%', '100%'],
-                                extrapolate: 'clamp',
-                              }),
-                            },
-                          ]}
-                        />
+                      <View style={styles.statTextContainer}>
+                        <AnimatedNumber value={streakAnim} style={styles.statNumber} />
+                        <Text style={styles.statLabel}>Day Streak</Text>
+                      </View>
+                    </Animated.View>
+
+                    {/* Articles Read Card */}
+                    <Animated.View key="articles-read" style={[styles.statCard, styles.statCardPrimary]}>
+                      <View style={styles.statIconContainer}>
+                        <MaterialIcons name="article" size={22} color="#6366F1" />
+                      </View>
+                      <View style={styles.statTextContainer}>
+                        <AnimatedNumber value={articlesReadAnim} style={styles.statNumber} />
+                        <Text style={styles.statLabel}>Articles Read</Text>
                       </View>
                     </Animated.View>
 
@@ -916,21 +917,9 @@ export default function ProfileScreen() {
                       <View style={styles.statIconContainer}>
                         <MaterialIcons name="comment" size={22} color="#10B981" />
                       </View>
-                      <AnimatedNumber value={commentsPostedAnim} style={styles.statNumber} />
-                      <Text style={styles.statLabel}>Comments Posted</Text>
-                      <View style={styles.statProgressBar}>
-                        <Animated.View 
-                          style={[
-                            styles.statProgressFillComments,
-                            {
-                              width: commentsPostedAnim.interpolate({
-                                inputRange: [0, 50],
-                                outputRange: ['0%', '100%'],
-                                extrapolate: 'clamp',
-                              }),
-                            },
-                          ]}
-                        />
+                      <View style={styles.statTextContainer}>
+                        <AnimatedNumber value={commentsPostedAnim} style={styles.statNumber} />
+                        <Text style={styles.statLabel}>Comments Posted</Text>
                       </View>
                     </Animated.View>
                   </View>
@@ -1351,7 +1340,8 @@ const styles = StyleSheet.create({
   statCard: {
     backgroundColor: '#fff',
     borderRadius: 12,
-    padding: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
@@ -1362,6 +1352,9 @@ const styles = StyleSheet.create({
     elevation: 4,
     borderWidth: 1,
     borderColor: '#F0F0F0',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
   },
   statCardPrimary: {
     borderLeftWidth: 4,
@@ -1382,7 +1375,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#F5F5F5',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 8,
+  },
+  statTextContainer: {
+    flex: 1,
+    justifyContent: 'center',
   },
   statNumber: {
     fontSize: 26,
@@ -1399,25 +1395,9 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
-  statProgressBar: {
-    height: 6,
-    backgroundColor: '#F0F0F0',
-    borderRadius: 3,
-    overflow: 'hidden',
-  },
-  statProgressFill: {
-    height: '100%',
-    backgroundColor: '#6366F1',
-    borderRadius: 3,
-  },
-  statProgressFillStreak: {
-    height: '100%',
-    backgroundColor: '#F59E0B',
-    borderRadius: 3,
-  },
-  statProgressFillComments: {
-    height: '100%',
-    backgroundColor: '#10B981',
-    borderRadius: 3,
+  statSubLabel: {
+    fontSize: 12,
+    color: '#94A3B8',
+    marginBottom: 6,
   },
 });

@@ -4,10 +4,6 @@ import { logger } from './logger';
 // API Gateway base URL from environment variables
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_GATEWAY_URL;
 
-if (!API_BASE_URL) {
-  logger.warn('[API] Missing EXPO_PUBLIC_API_GATEWAY_URL - API requests will fail');
-}
-
 interface ApiOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
   body?: any;
@@ -181,6 +177,7 @@ class ApiClient {
       throw new Error('API base URL is not configured');
     }
     
+    const fullUrl = `${API_BASE_URL}${endpoint}`;
     const headers = {
       'Content-Type': 'application/json',
       ...customHeaders,
@@ -195,10 +192,23 @@ class ApiClient {
       config.body = JSON.stringify(body);
     }
 
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, config);
+    let response: Response;
+    try {
+      response = await fetch(fullUrl, config);
+    } catch (networkError: any) {
+      logger.error('[API] Network error:', networkError);
+      throw networkError;
+    }
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
+      let errorData: any = {};
+      try {
+        const responseText = await response.text();
+        errorData = responseText ? JSON.parse(responseText) : {};
+        logger.error('[API] Error response:', { status: response.status, errorData });
+      } catch (parseError) {
+        logger.error('[API] Failed to parse error response:', parseError);
+      }
       const sanitizedMessage = this.sanitizeErrorMessage(errorData.message || response.statusText);
       const error: any = new Error(sanitizedMessage);
       error.status = response.status;
@@ -224,6 +234,7 @@ class ApiClient {
       throw new Error('API base URL is not configured');
     }
     
+    const fullUrl = `${API_BASE_URL}${endpoint}`;
     const authHeaders = await this.getAuthHeaders();
     const headers = {
       ...authHeaders,
@@ -240,21 +251,29 @@ class ApiClient {
     }
 
     try {
-      const response = await fetch(`${API_BASE_URL}${endpoint}`, config);
+      const response = await fetch(fullUrl, config);
 
       if (!response.ok) {
         if (response.status === 401) {
+          logger.warn('[API] 401 Unauthorized');
           await this.handleUnauthorized();
           const error = new Error('Unauthorized') as any;
           error.status = response.status;
           throw error;
         }
 
-        const errorData = await response.json().catch(() => ({}));
+        let errorData: any = {};
+        try {
+          const responseText = await response.text();
+          errorData = responseText ? JSON.parse(responseText) : {};
+          logger.error('[API] Error response:', { status: response.status, errorData });
+        } catch (parseError) {
+          logger.error('[API] Failed to parse error response:', parseError);
+        }
         const sanitizedMessage = this.sanitizeErrorMessage(errorData.message || response.statusText);
         const error = new Error(sanitizedMessage) as any;
         error.status = response.status;
-        error.url = `${API_BASE_URL}${endpoint}`;
+        error.url = fullUrl;
         throw error;
       }
 
@@ -265,8 +284,11 @@ class ApiClient {
       
       return {} as T;
     } catch (error: any) {
+      logger.error('[API] Request failed:', error);
+      
       // Retry GET requests with network errors (exponential backoff)
       if (error.message === 'Failed to fetch' && method === 'GET') {
+        logger.log('[API] Retrying failed fetch request...');
         for (let attempt = 1; attempt <= 3; attempt++) {
           const delay = 1000 * Math.pow(2, attempt - 1);
           logger.log(`[API] Retry ${attempt}/3 after ${delay}ms`);
@@ -274,7 +296,9 @@ class ApiClient {
           await new Promise(resolve => setTimeout(resolve, delay));
           
           try {
-            const response = await fetch(`${API_BASE_URL}${endpoint}`, { method, headers });
+            logger.log(`[API] Retry attempt ${attempt}: ${method} ${endpoint}`);
+            const response = await fetch(fullUrl, { method, headers });
+            logger.log(`[API] Retry ${attempt} response status: ${response.status}`);
             
             if (!response.ok) {
               if (response.status === 401) {
@@ -291,7 +315,11 @@ class ApiClient {
             }
             return {} as T;
           } catch (retryError: any) {
-            if (attempt === 3) throw retryError;
+            logger.error(`[API] Retry ${attempt} failed:`, retryError);
+            if (attempt === 3) {
+              logger.error('[API] All retry attempts failed');
+              throw retryError;
+            }
           }
         }
       }
@@ -385,6 +413,59 @@ class ApiClient {
       return {
         success: false,
         error: error?.message || 'Failed to fetch user profile',
+      };
+    }
+  }
+
+  async getProfileStatsSummary(): Promise<{
+    success: boolean;
+    stats?: {
+      // Total UNIQUE articles read; mirrors articlesReadCount from backend
+      articlesRead?: number;
+      articlesReadCount?: number;
+      commentsPosted?: number;
+      streak?: number;
+      // Timestamp of the last NEW unique article that counted toward the streak
+      streakLastReadAt?: string;
+      // Convenience fields for UI
+      lastActivityDate?: string;
+      lastViewedAt?: string;
+      updatedAt?: string;
+      longestStreak?: number;
+    };
+    error?: string;
+  }> {
+    try {
+      const endpoint = '/api/profile/stats/summary';
+      const response = await this.request<any>(endpoint, { method: 'GET' });
+      
+      // Normalize stats so the app can rely on articlesRead being a UNIQUE count
+      const rawStats = response.stats || response.data || response || {};
+      const articlesReadCount =
+        rawStats.articlesReadCount ??
+        rawStats.uniqueArticlesRead ??
+        rawStats.articlesRead ??
+        0;
+
+      const normalizedStats = {
+        ...rawStats,
+        articlesRead: articlesReadCount,
+        articlesReadCount,
+      };
+
+      return {
+        success: response.success ?? true,
+        stats: normalizedStats,
+      };
+    } catch (error: any) {
+      logger.error('[API] getProfileStatsSummary error:', {
+        message: error?.message,
+        status: error?.status,
+        url: error?.url,
+      });
+      return {
+        success: false,
+        error: error?.message || 'Failed to load profile stats summary',
       };
     }
   }
@@ -576,6 +657,37 @@ class ApiClient {
     } catch (error: any) {
       logger.error('[API] callProfileEndpoint error:', error?.message || error);
       return null;
+    }
+  }
+
+  // ========== ARTICLE STATS ==========
+
+  async recordArticleView(articleId: string | number): Promise<{
+    success: boolean;
+    error?: string;
+  }> {
+    try {
+      const endpoint = `/api/profile/stats/article-view`;
+      logger.log('[API] recordArticleView: Recording view for article:', articleId);
+      const response = await this.request<any>(endpoint, {
+        method: 'POST',
+        body: { articleId: String(articleId) },
+      });
+
+      return {
+        success: response.success ?? true,
+        error: response.error,
+      };
+    } catch (error: any) {
+      logger.error('[API] recordArticleView error:', {
+        message: error?.message,
+        status: error?.status,
+        url: error?.url,
+      });
+      return {
+        success: false,
+        error: error?.message || 'Failed to record article view',
+      };
     }
   }
 

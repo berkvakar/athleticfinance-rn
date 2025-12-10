@@ -20,6 +20,7 @@ import ParagraphBlock from '../components/ParagraphBlock';
 import CommentSection from '../components/CommentSection';
 import { parseToParagraphBlocks, ParagraphBlock as ParagraphBlockType } from '../lib/paragraphParser';
 import { useAuth } from '../contexts/AuthContext';
+import { apiClient } from '../lib/api';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -72,12 +73,10 @@ export default function ArticleDetailScreen({ route }: ArticleDetailScreenProps)
   const [currentPage, setCurrentPage] = useState(0);
   const bookmarkScale = useRef(new Animated.Value(1)).current;
   const bookmarkOpacity = useRef(new Animated.Value(1)).current;
+  const hasRecordedViewRef = useRef(false);
 
   // Check if current article is saved
   const isSaved = savedArticleIds.has(article.id);
-
-  // Log the full article object to see if media data is included
-  //console.log('[ARTICLE_DETAIL] Full article object:', JSON.stringify(article, null, 2));
 
   // Animate bookmark when state changes
   useEffect(() => {
@@ -110,6 +109,26 @@ export default function ArticleDetailScreen({ route }: ArticleDetailScreenProps)
       ]),
     ]).start();
   }, [isSaved]);
+
+  // Record article view for stats when screen mounts
+  useEffect(() => {
+    if (!user || !article?.id || hasRecordedViewRef.current) {
+      return;
+    }
+
+    hasRecordedViewRef.current = true;
+
+    (async () => {
+      try {
+        const result = await apiClient.recordArticleView(article.id);
+        if (!result.success) {
+          // Non-fatal: stats endpoint failed, but article content still loads
+        }
+      } catch (error) {
+        hasRecordedViewRef.current = false; // allow retry if user stays on screen
+      }
+    })();
+  }, [article?.id, user]);
 
   // Parse content into paragraph blocks
   const paragraphBlocks = parseToParagraphBlocks(article.content);
@@ -214,9 +233,6 @@ export default function ArticleDetailScreen({ route }: ArticleDetailScreenProps)
                 source={{ uri: heroImageUrl }}
                 style={styles.heroImage}
                 resizeMode="cover"
-                onError={(error) => {
-                  console.log('[ARTICLE_DETAIL] Hero image load error:', error);
-                }}
               />
             </View>
           ) : article.hero_image_id ? (
